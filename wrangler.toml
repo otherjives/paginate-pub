@@ -1,0 +1,43 @@
+name = "paginate-pub"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ZONE_ID = "b83ef42fa20dbbde027e36cae95b1a44"
+ACCOUNT_ID = "9a54ed9f331064727efb2a4e55299a1d"
+DOMAIN = "paginate.dev"
+PUBLIC_BASE = "https://pub.paginate.dev"
+PRIVATE_BASE = "https://private.paginate.dev"
+MCP_BASE = "https://mcp.paginate.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "paginatepub"
+database_id = "01a095c1-9b1d-48cf-bb81-8ab694070889"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "9b0d508195654bbe8b2a46d3cc9834dd"
+
+[[send_email]]
+name = "EMAIL"
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS_ENGINE"
+dataset = "analytic_events"
+
+[[routes]]
+pattern = "pub.paginate.dev"
+custom_domain = true
+
+[[routes]]
+pattern = "private.paginate.dev"
+custom_domain = true
+
+[[routes]]
+pattern = "mcp.paginate.dev"
+custom_domain = true
+
+[triggers]
+crons = ["0 */6 * * *"]
