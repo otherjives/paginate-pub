@@ -3,3 +3,8 @@ node_modules/
 .dev.vars
 *.log
 .env
+
+# never commit build output or local paths
+/c/Users/jives/Temp/
+Temp/
+dryrun/
