@@ -25,6 +25,18 @@ connector URL (`...mcp?tk=...`) for claude.ai → Settings → Connectors → Ad
 custom connector. It's experimental — if the connector setup rejects it, note
 that in your report; the terminal path is the supported one.
 
+## First-run note (one-time permission approval)
+
+The first time Claude tries to use the paginate-pub tools it will ask to
+approve them. In an interactive session, pick "always allow" for the server —
+once. If you run Claude headless (non-interactive), tools can't be approved
+mid-run; either approve once interactively first, or create
+`.claude/settings.local.json` in the project folder containing:
+
+```json
+{ "permissions": { "allow": ["mcp__paginate-pub"] } }
+```
+
 ## Step 3 — Do the thing (copy/paste any of these into Claude)
 
 Say things like:
