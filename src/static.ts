@@ -39,7 +39,8 @@ const MIME: Record<string, string> = {
 
 export function contentTypeFor(path: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(path);
-  return MIME[(m?.[1] ?? "").toLowerCase()] ?? "application/octet-stream";
+  // MIME is keyed WITH the leading dot (".css"); m[1] is the bare ext ("css").
+  return MIME["." + (m?.[1] ?? "").toLowerCase()] ?? "application/octet-stream";
 }
 
 // Minimum CSP for published demo pages: no external fetches by default,

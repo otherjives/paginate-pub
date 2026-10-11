@@ -17,6 +17,7 @@ import { bearerRole } from "./util";
 import { bumpCounter } from "./status";
 import { watchCosts } from "./status";
 import { handleAdminSite } from "./adminsite";
+import { handleApi } from "./api";
 
 const MCP_ROUTE = "/mcp";
 
@@ -85,6 +86,29 @@ export default {
       } else {
         visibility = "public"; // workers.dev fallback
       }
+      // ---- per-page data API (/api/<slug>/...) ----
+      const api = await handleApi(request, env, visibility);
+      if (api) return api;
+
+      // ---- latest-version redirect (/s/<slug>/ -> newest hash) ----
+      // The shareable "always current" URL: 302 to the newest published
+      // version. No hash means 'latest'; browsers follow transparently.
+      let lm = /^\/s\/([a-z0-9][a-z0-9-]*)\/?(\?|$)/.exec(url.pathname);
+      if (lm && request.method === "GET") {
+        const latest = await env.DB.prepare(
+          "SELECT visibility, hash FROM pages WHERE slug = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        ).bind(lm[1]).first<{ visibility: string; hash: string }>();
+        if (latest && latest.visibility === visibility) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: `/s/${lm[1]}/${latest.hash}/`,
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+      }
+
       const asset = await serveAsset(env, request, visibility, ctx);
       // self-metered usage counters (fire-and-forget; never blocks the response)
       ctx.waitUntil(bumpCounter(env.DB, `req:${new Date().toISOString().slice(0, 10)}`, 1));

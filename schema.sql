@@ -95,5 +95,23 @@ CREATE TABLE IF NOT EXISTS mcp_tokens (
 CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_mcp_tokens_email ON mcp_tokens(email);
 
--- migration: add expires_at to the live mcp_tokens table (no-op if present)
-ALTER TABLE mcp_tokens ADD COLUMN expires_at TEXT;
+
+-- per-page public data API (Phase H): one JSON record store for all slugs.
+-- A record is a JSON object the page owns; the platform enforces slug
+-- existence + visibility match + size + rate limits (see src/api.ts).
+CREATE TABLE IF NOT EXISTS page_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_page_data_slug ON page_data(slug, id);
+
+-- per-slug+IP write rate limiting (60 writes / 5-min window). Rows are keyed
+-- by window number; old windows are pruned lazily by the API handler.
+CREATE TABLE IF NOT EXISTS rate_limit (
+  k TEXT NOT NULL,
+  window INTEGER NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (k, window)
+);

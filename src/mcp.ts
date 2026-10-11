@@ -6,6 +6,7 @@ import { z } from "zod";
 import { CfClient } from "./cf";
 import { serveAsset } from "./static"; // re-exported for tests
 import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText, type PageRow } from "./util";
+import { contentTypeFor } from "./static";
 import { registerAccessTools } from "./access";
 import { registerEmailTools } from "./email";
 import { registerSubdomainTools } from "./subdomain";
@@ -29,6 +30,46 @@ function baseFor(visibility: "public" | "private", env: ToolEnv): string {
   return visibility === "public" ? env.PUBLIC_BASE : env.PRIVATE_BASE;
 }
 
+// ---- template shims (injected before </head>; self-contained, no CDNs) ----
+const SLIDES_SHIM = `<script>
+// paginate-pub 'slides' preset: viewers on the latest URL (/s/<slug>/)
+// pick up the presenter's next publish within 5s. fetch() follows the
+// 302 to the newest hash, so the final URL changes when content changes.
+(function () {
+  if (location.pathname.match(/\\/s\\/[^/]+\\/?$/)) {
+    var etag = null;
+    setInterval(function () {
+      fetch(location.href, { cache: "no-store" }).then(function (r) {
+        var sig = r.url;
+        if (etag && etag !== sig) location.reload();
+        etag = sig;
+      }).catch(function () {});
+    }, 5000);
+  }
+})();
+</script>`;
+
+const APP_SHIM = `<script>
+// paginate-pub 'app' preset helpers: same-origin /api/<slug> JSON client.
+window.pp = {
+  api: function (path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    return fetch("/api/" + window.pp.slug + (path || ""), opts).then(function (r) {
+      return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+    });
+  },
+  slug: (location.pathname.match(/\\/s\\/([a-z0-9-]+)/) || [])[1] || "",
+};
+</script>`;
+
+const TEMPLATE_API_NOTES = `# API notes for this page
+- Same-origin JSON API: GET /api/<slug> (list, newest first), POST /api/<slug> (create),
+  PUT /api/<slug>/<id>, DELETE /api/<slug>/<id>, GET /api/<slug>/_count.
+- Records are arbitrary JSON objects up to 16 KB. Writes rate-limited per IP.
+- The page JS can use window.pp.api(...) (injected by the 'app'/'game'/'board' presets).
+`;
+
 export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
   const server = new McpServer({ name: "paginate-pub", version: "1.0.0" });
   const cf = new CfClient(env);
@@ -48,17 +89,42 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
         title: z.string().optional().describe("Short human title for the page."),
         slug: z.string().optional().describe("Short kebab-case URL name, e.g. 'my-demo'. Defaults to a slug from the title."),
         visibility: z.enum(["public", "private"]).default("public").describe("'public' = anyone with the link; 'private' = only you / granted groups."),
+        files: z.record(z.string(), z.string()).optional().describe(
+          "Extra files to publish alongside the HTML, as {path: content}. " +
+          "Paths become /s/<slug>/<hash>/<path>. Use for separate styles.css / app.js etc. " +
+          "Do NOT include an entry for the main HTML (it is the index)."
+        ),
+        template: z.enum(["blank", "slides", "game", "board", "app"]).optional().describe(
+          "Preset wiring to include: " +
+          "'slides' = live auto-reload presentation (viewers refresh to latest), " +
+          "'game' = scoreboard page with a ready /api score table, " +
+          "'board' = kanban-style board backed by /api records, " +
+          "'app' = generic data-backed app shell (fetch /api/<slug> helpers included), " +
+          "'blank' = nothing extra."
+        ),
       },
     },
-    async ({ html, title, slug, visibility }) => {
+    async ({ html, title, slug, visibility, files, template }) => {
       try {
         const s = slugify(slug ?? title ?? "page");
-        const hash = await sha256Hex16(html);
+        // Template presets can inject a small runtime shim before </head>.
+        // (KISS: a comment-marked injection, never a CDN dependency.)
+        let body = html;
+        const extra: Record<string, string> = { ...(files ?? {}) };
+        if (template === "slides") {
+          body = html.replace("</head>", SLIDES_SHIM + "\n</head>");
+        } else if (template === "game" || template === "board" || template === "app") {
+          body = html.replace("</head>", APP_SHIM + "\n</head>");
+          if (!extra["api-notes.md"] && (template === "game" || template === "board")) {
+            extra["api-notes.md"] = TEMPLATE_API_NOTES;
+          }
+        }
+        const hash = await sha256Hex16(body);
         // Canonical KV key for a published asset: <visibility>/<slug>/<hash>
         const key = assetKey(visibility, s, hash);
-        const size = new TextEncoder().encode(html).byteLength;
+        const size = new TextEncoder().encode(body).byteLength;
 
-        await env.CACHE.put(key, html, { contentType: "text/html; charset=utf-8" });
+        await env.CACHE.put(key, body, { metadata: { contentType: "text/html; charset=utf-8" } });
         // verify read-after-write (KV is occasionally briefly inconsistent)
         if ((await env.CACHE.get(key)) === null) {
           await new Promise((r) => setTimeout(r, 250));
@@ -74,14 +140,28 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
           try { await env.CACHE.delete(legacyKey); } catch { /* best effort */ }
         }
 
+        // Multi-file: side files live at <visibility>/<slug>/<hash><path>.
+        // The page references them RELATIVELY (src="app.js") — the browser
+        // resolves them under the hash directory automatically.
+        for (const [path, content] of Object.entries(extra)) {
+          const clean = "/" + path.replace(/^\/+/, "").replace(/[^a-zA-Z0-9._/-]+/g, "-");
+          if (clean === "/" || clean.includes("/..")) continue;
+          const fk = assetKey(visibility, s, hash, clean);
+          const ctype = contentTypeFor(clean);
+          // KV's real API: contentType goes in `metadata` (the workers-types
+          // shape); respondWith prefers stored metadata over extensions.
+          await env.CACHE.put(fk, content, { metadata: { contentType: ctype } });
+        }
+
         const url = `${baseFor(visibility, env)}/s/${s}/${hash}/`;
+        const latest = `${baseFor(visibility, env)}/s/${s}/`;
         const now = new Date().toISOString();
         await env.DB.prepare(
           "INSERT INTO pages (slug, title, visibility, hash, url, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         ).bind(s, title ?? null, visibility, hash, url, size, now).run();
 
-        await logOp(env.DB, "publish_page", { slug: s, hash, visibility, url, size }, true);
-        return jsonText({ url, slug: s, hash, visibility, size_bytes: size });
+        await logOp(env.DB, "publish_page", { slug: s, hash, visibility, url, size, files: Object.keys(extra).length, template: template ?? null }, true);
+        return jsonText({ url, latest_url: latest, slug: s, hash, visibility, size_bytes: size, files: Object.keys(extra).length, template: template ?? null });
       } catch (e) {
         await logOp(env.DB, "publish_page", { error: String(e) }, false);
         return errText(String(e));
@@ -235,7 +315,7 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
             }
           }
           if (html === null) continue; // content genuinely missing; skip but keep row
-          await env.CACHE.put(assetKey(to, v.slug, v.hash), html, { contentType: "text/html; charset=utf-8" });
+          await env.CACHE.put(assetKey(to, v.slug, v.hash), html, { metadata: { contentType: "text/html; charset=utf-8" } });
           await env.CACHE.delete(assetKey(foundUnder, v.slug, v.hash));
           // also remove the recorded-prefix copy if it was a stale leftover
           if (foundUnder !== v.visibility) await env.CACHE.delete(assetKey(v.visibility, v.slug, v.hash));

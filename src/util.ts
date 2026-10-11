@@ -94,7 +94,7 @@ export async function bearerRole(
   const h = request.headers.get("Authorization") ?? "";
   if (!h.startsWith("Bearer ")) return null;
   const token = h.slice(7);
-  if (token.length === 64 && token.startsWith("pp_")) {
+  if (token.startsWith("pp_") && token.length >= 64) {
     const hash = await sha256Hex(token);
     const row = await db.prepare(
       "SELECT id, revoked, expires_at FROM mcp_tokens WHERE token_hash = ?",
