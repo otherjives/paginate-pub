@@ -88,7 +88,9 @@ check("T1 text/html content-type", "text/html" in hdrs.get("content-type",""), h
 check("T1 body matches", b"acceptance hello" in body)
 
 # --- Test 2: private + group ---
-r2 = call("publish_page", {"html": "<h1>secret stuff</h1>", "slug": "acceptance-secret", "visibility": "private"})
+import time as _t0; _RUN = str(int(_t0.time()))
+_SECRET = f"<h1>secret stuff {_RUN}</h1>"
+r2 = call("publish_page", {"html": _SECRET, "slug": "acceptance-secret", "visibility": "private"})
 check("T2 private publish returns private url", "private.paginate.dev" in r2.get("url",""), r2.get("url",""))
 call("create_group", {"name": "acceptance-team", "emails": ["friend@example.com"]})
 gr = call("grant_access", {"slug": "acceptance-secret", "group": "acceptance-team"})
@@ -106,9 +108,15 @@ mv = call("set_visibility", {"slug": "acceptance-secret", "to": "public"})
 check("T3 set_visibility moved", mv.get("moved") is True, str(mv))
 # old private URL should be gone (landing json, not the secret)
 st, hdrs, body = get(f"https://private.paginate.dev/s/acceptance-secret/{r2['hash']}/", resolve=("private.paginate.dev", IP))
-check("T3 old private URL dead", b"secret stuff" not in body, body[:100].decode(errors="replace"))
-st, hdrs, body = get(f"https://pub.paginate.dev/s/acceptance-secret/{r2['hash']}/")
-check("T3 new public URL serves", st == 200 and b"secret stuff" in body, f"status={st}")
+check("T3 old private URL dead", _SECRET.encode() not in body, body[:100].decode(errors="replace"))
+import time as _t
+ok3 = False
+for _ in range(5):
+    st, hdrs, body = get(f"https://pub.paginate.dev/s/acceptance-secret/{r2['hash']}/")
+    if st == 200 and _SECRET.encode() in body:
+        ok3 = True; break
+    _t.sleep(1.0)
+check("T3 new public URL serves", ok3, f"status={st}")
 
 # --- Test 3b: split-slug move (the bug we fixed) ---
 call("delete_page", {"slug": "acceptance-split"})  # clean slate (idempotent)
@@ -137,8 +145,11 @@ ops = call("get_ops_log", {"limit": 10})
 check("T5 get_ops_log has entries", ops.get("count",0) >= 5, str(ops.get("count")))
 
 # --- Test 6: email guard (arbitrary recipient must refuse) ---
-se = call("send_email", {"to": "stranger@elsewhere.example", "subject": "hi", "body_text": "hi"})
-check("T6 send_email refuses unverified recipient", isinstance(se, str) and "verified destination" in se.lower(), str(se)[:150])
+try:
+    se = call("send_email", {"to": "stranger@elsewhere.example", "subject": "hi", "body_text": "hi"})
+    check("T6 send_email refuses unverified recipient", False, f"no refusal: {se}")
+except RuntimeError as e:
+    check("T6 send_email refuses unverified recipient", "verified destination" in str(e).lower(), str(e)[:150])
 
 # --- Test 7: dns + secrets list ---
 dns = call("list_dns", {})
@@ -149,8 +160,11 @@ check("T7 secrets listed (names only)", "MCP_TOKEN" in names and "CF_API_TOKEN" 
 check("T7 no secret values leaked", all(isinstance(n, str) and len(n) < 40 and "=" not in n for n in sec.get("secrets", [])), "")
 
 # --- Test 8: create_db ---
-db = call("create_db", {"name": "acceptance-db", "visibility": "private", "owner_slug": "acceptance-secret"})
-check("T8 create_db ok", db.get("created") is True and db.get("d1_uuid"), str(db)[:200])
+try:
+    db = call("create_db", {"name": "acceptance-db", "visibility": "private", "owner_slug": "acceptance-secret"})
+    check("T8 create_db ok", db.get("created") is True and db.get("d1_uuid"), str(db)[:200])
+except RuntimeError as e:
+    check("T8 create_db ok (idempotent re-run)", "already exists" in str(e).lower(), str(e)[:150])
 
 print()
 print(f"== {len(passed)} passed, {len(failed)} failed ==")

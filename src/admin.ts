@@ -14,7 +14,11 @@ export interface AdminEnv {
 }
 
 import { z } from "zod";
-export function registerAdminTools(server: any, env: AdminEnv) {
+export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "user" = "admin") {
+  const ownerOnly = () =>
+    errText("This tool requires the owner token. Tokens issued from the admin site are user-scoped by design.");
+
+
   const cf = new CfClient(env);
 
   // ---- DNS ----
@@ -52,6 +56,7 @@ export function registerAdminTools(server: any, env: AdminEnv) {
       },
     },
     async ({ name, type, content, proxied }: any) => {
+      if (role !== "admin") return ownerOnly();
       try {
         const r = await cf.createDnsRecord({ name, type, content, proxied: proxied ?? true, ttl: 1 });
         await logOp(env.DB, "set_dns", { name, type, content }, true);
@@ -72,6 +77,7 @@ export function registerAdminTools(server: any, env: AdminEnv) {
       inputSchema: {},
     },
     async () => {
+      if (role !== "admin") return ownerOnly();
       try {
         const secrets = await cf.listWorkerSecrets(env.WORKER_NAME);
         return jsonText({ secrets: secrets.map((s: any) => s.name) });
@@ -89,6 +95,7 @@ export function registerAdminTools(server: any, env: AdminEnv) {
       inputSchema: { name: z.string(), value: z.string() },
     },
     async ({ name, value }: any) => {
+      if (role !== "admin") return ownerOnly();
       try {
         await cf.putWorkerSecret(env.WORKER_NAME, name, value);
         await logOp(env.DB, "set_worker_secret", { name }, true);
@@ -168,6 +175,7 @@ export function registerAdminTools(server: any, env: AdminEnv) {
       },
     },
     async ({ name, visibility, owner_slug }: any) => {
+      if (role !== "admin") return ownerOnly();
       try {
         const clean = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
         const d = await cf.createD1(clean);

@@ -29,7 +29,7 @@ function baseFor(visibility: "public" | "private", env: ToolEnv): string {
   return visibility === "public" ? env.PUBLIC_BASE : env.PRIVATE_BASE;
 }
 
-export function createServer(env: ToolEnv) {
+export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
   const server = new McpServer({ name: "paginate-pub", version: "1.0.0" });
   const cf = new CfClient(env);
 
@@ -205,14 +205,6 @@ export function createServer(env: ToolEnv) {
         ).bind(slug, to).first<{ n: number }>())?.n ?? 0;
         if (notAtTarget === 0) return jsonText({ already: true, slug, hash: row.hash, visibility: to });
 
-        const html = await env.CACHE.get(assetKey(row.visibility, row.slug, row.hash));
-        if (html === null) return errText("Stored content missing; cannot move.");
-
-        // copy to the new visibility prefix
-        await env.CACHE.put(assetKey(to, row.slug, row.hash), html, { contentType: "text/html; charset=utf-8" });
-        // remove the old copy (old URL stops working immediately)
-        await env.CACHE.delete(assetKey(row.visibility, row.slug, row.hash));
-
         // Move every version of this slug so the slug always resolves to one
         // visibility (the friend thinks in slugs, not hashes). Only versions
         // whose current visibility differs from the target need moving.
@@ -227,14 +219,26 @@ export function createServer(env: ToolEnv) {
         for (const v of versions) {
           // KV reads can be briefly inconsistent across PoPs right after a
           // publish — retry once before deciding the content is missing.
-          let html = await env.CACHE.get(assetKey(v.visibility, v.slug, v.hash));
-          if (html === null) {
-            await new Promise((r) => setTimeout(r, 300));
+          // KV is eventually consistent across PoPs, and a previously
+          // interrupted move can leave content under the OTHER prefix while
+          // D1 still records this visibility. Read the recorded prefix first,
+          // fall back to the other one, retry with backoff.
+          const other = v.visibility === "public" ? "private" : "public";
+          let html: string | null = null;
+          let foundUnder: "public" | "private" = v.visibility;
+          for (let attempt = 0; attempt < 4 && html === null; attempt++) {
+            if (attempt) await new Promise((r) => setTimeout(r, 250 * attempt));
             html = await env.CACHE.get(assetKey(v.visibility, v.slug, v.hash));
+            if (html === null) {
+              const alt = await env.CACHE.get(assetKey(other, v.slug, v.hash));
+              if (alt !== null) { html = alt; foundUnder = other; }
+            }
           }
           if (html === null) continue; // content genuinely missing; skip but keep row
           await env.CACHE.put(assetKey(to, v.slug, v.hash), html, { contentType: "text/html; charset=utf-8" });
-          await env.CACHE.delete(assetKey(v.visibility, v.slug, v.hash));
+          await env.CACHE.delete(assetKey(foundUnder, v.slug, v.hash));
+          // also remove the recorded-prefix copy if it was a stale leftover
+          if (foundUnder !== v.visibility) await env.CACHE.delete(assetKey(v.visibility, v.slug, v.hash));
           const newUrl = `${baseFor(to, env)}/s/${v.slug}/${v.hash}/`;
           await env.DB.prepare("UPDATE pages SET visibility = ?, url = ? WHERE id = ?").bind(to, newUrl, v.id).run();
           moved.push({ hash: v.hash, url: newUrl });
@@ -275,8 +279,9 @@ export function createServer(env: ToolEnv) {
   // Phase F: status / audit / leak tools
   registerStatusTools(server, env);
 
-  // Phase F2: admin tools (DNS, secrets, token rotation, ops log, create_db)
-  (registerAdminTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" });
+  // Phase F2: admin tools (DNS, secrets, token rotation, ops log, create_db).
+  // Owner-only tools refuse per-user tokens (role gating).
+  (registerAdminTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" }, role);
 
   return server;
 }

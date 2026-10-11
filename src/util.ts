@@ -11,6 +11,14 @@ export function slugify(input: string): string {
   return s || "page";
 }
 
+export async function sha256Hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function sha256Hex16(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -62,7 +70,7 @@ export function errText(message: string) {
   return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true as const };
 }
 
-// constant-time-ish bearer compare
+// constant-time-ish bearer compare (owner secret)
 export async function bearerOk(request: Request, expected: string): Promise<boolean> {
   const h = request.headers.get("Authorization") ?? "";
   if (!h.startsWith("Bearer ")) return false;
@@ -73,4 +81,34 @@ export async function bearerOk(request: Request, expected: string): Promise<bool
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
+}
+
+// Bearer check for EITHER the owner secret OR a live (non-revoked) hashed
+// per-user token from mcp_tokens. Returns the role: "admin" for the owner
+// secret, "user" for per-user tokens, or null if unauthorized.
+export async function bearerRole(
+  request: Request,
+  ownerSecret: string,
+  db: D1Database,
+): Promise<"admin" | "user" | null> {
+  const h = request.headers.get("Authorization") ?? "";
+  if (!h.startsWith("Bearer ")) return null;
+  const token = h.slice(7);
+  if (token.length === 64 && token.startsWith("pp_")) {
+    const hash = await sha256Hex(token);
+    const row = await db.prepare(
+      "SELECT id, revoked, expires_at FROM mcp_tokens WHERE token_hash = ?",
+    ).bind(hash).first<{ id: number; revoked: number; expires_at: string | null }>();
+    const expired = row?.expires_at ? new Date(row.expires_at).getTime() < Date.now() : false;
+    if (row && !row.revoked && !expired) {
+      db.prepare("UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), row.id)
+        .run()
+        .catch(() => {});
+      return "user";
+    }
+    return null;
+  }
+  if (await bearerOk(request, ownerSecret)) return "admin";
+  return null;
 }

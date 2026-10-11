@@ -82,10 +82,11 @@ export async function ensureGroup(env: AccessEnv, name: string, emails: string[]
   return createGroup(env, name, emails);
 }
 
-// The Access app that gates an asset. One app per slug on the private host,
-// path-scoped: <private_base>/s/<slug>/
+// The Access app that gates an asset. One app per slug, PATH-SCOPED:
+// "<private host>/s/<slug>" — one app per hostname would share policy across
+// slugs (granting slug A would expose slug B); path scoping fixes that.
 export function assetAppDomain(env: AccessEnv, slug: string): string {
-  return new URL(env.PRIVATE_BASE).host; // private.<domain>
+  return `${new URL(env.PRIVATE_BASE).host}/s/${slug}`;
 }
 
 export async function findOrCreateAssetApp(

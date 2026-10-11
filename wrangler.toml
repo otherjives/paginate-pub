@@ -10,6 +10,8 @@ DOMAIN = "paginate.dev"
 PUBLIC_BASE = "https://pub.paginate.dev"
 PRIVATE_BASE = "https://private.paginate.dev"
 MCP_BASE = "https://mcp.paginate.dev"
+ACCESS_TEAM = "otherjives.cloudflareaccess.com"
+ADMIN_AUD = "350cf714d707f6c61adca59a604271b3b8cd04a40026342a1cd49014f5d4a505"
 
 [[d1_databases]]
 binding = "DB"
@@ -37,6 +39,10 @@ custom_domain = true
 
 [[routes]]
 pattern = "mcp.paginate.dev"
+custom_domain = true
+
+[[routes]]
+pattern = "admin.paginate.dev"
 custom_domain = true
 
 [triggers]

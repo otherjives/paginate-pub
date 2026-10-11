@@ -9,6 +9,8 @@ interface Env {
   PUBLIC_BASE: string;
   PRIVATE_BASE: string;
   MCP_BASE: string;
+  ACCESS_TEAM: string;   // e.g. 'otherjives.cloudflareaccess.com'
+  ADMIN_AUD: string;     // Access application AUD for admin.<domain>
 
   // secrets (wrangler secret put)
   MCP_TOKEN: string;     // gates the MCP endpoint (Bearer)

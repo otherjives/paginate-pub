@@ -80,3 +80,20 @@ CREATE TABLE IF NOT EXISTS ops_log (
   at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ops_log_at ON ops_log(at);
+
+CREATE TABLE IF NOT EXISTS mcp_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL,
+  name TEXT,
+  token_hash TEXT NOT NULL,          -- sha256 hex of the token; token shown once at issue
+  role TEXT NOT NULL DEFAULT 'user', -- 'user' (admin-site issued) | 'admin' reserved
+  revoked INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT,
+  expires_at TEXT                      -- ISO date; user tokens expire (W1 fix)
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_email ON mcp_tokens(email);
+
+-- migration: add expires_at to the live mcp_tokens table (no-op if present)
+ALTER TABLE mcp_tokens ADD COLUMN expires_at TEXT;

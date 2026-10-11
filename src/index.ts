@@ -13,9 +13,10 @@
 import { createMcpHandler } from "agents/mcp/server";
 import { createServer } from "./mcp";
 import { serveAsset } from "./static";
-import { bearerOk } from "./util";
+import { bearerRole } from "./util";
 import { bumpCounter } from "./status";
 import { watchCosts } from "./status";
+import { handleAdminSite } from "./adminsite";
 
 const MCP_ROUTE = "/mcp";
 
@@ -51,18 +52,24 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (!(await bearerOk(request, env.MCP_TOKEN))) {
+      const role = await bearerRole(request, env.MCP_TOKEN, env.DB);
+      if (!role) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
           headers: { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" },
         });
       }
-      const handler = createMcpHandler(() => createServer(env), {
+      const handler = createMcpHandler(() => createServer(env, role), {
         route: MCP_ROUTE,
         corsOptions: false,
         allowedHostnames: [`mcp.${domain}`],
       });
       return handler(request, env, ctx);
+    }
+
+    // ---- admin site (admin.<domain>, Access-gated) ----
+    if (host === `admin.${domain}`) {
+      return handleAdminSite(request, env, ctx);
     }
 
     // ---- asset serving (runs for every non-MCP request, before landing) ----
@@ -85,6 +92,14 @@ export default {
     }
 
     // ---- landing (only reached when no asset matched) ----
+    // A /s/... path that misses is a 404 (never the landing JSON: a 200 landing
+    // on an asset URL can confuse both humans and caches).
+    if (url.pathname.startsWith("/s/")) {
+      return new Response("not found", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
     return new Response(
       JSON.stringify({
         service: "paginate-pub",
