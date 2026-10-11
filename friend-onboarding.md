@@ -1,65 +1,102 @@
-# Friend onboarding — paginate-pub
+# paginate-pub — Claude Code onboarding
 
-You never need to open the Cloudflare dashboard. Everything happens by talking
-to Claude.
+You (Claude) have access to the **paginate-pub** MCP server. It publishes web
+pages to paginate.dev. Everything below is what you need — call
+`get_asset` on any page mentioned here to study working examples.
 
-## One-time setup (2 minutes)
+## The 30-second version
 
-Run this once on your machine:
+The human asks for a page/site/demo. You write self-contained HTML and call
+`publish_page`. You get two URLs:
 
-```bash
-claude mcp add --transport http paginate-pub https://mcp.paginate.dev/mcp \
-  --header "Authorization: Bearer PASTE_YOUR_TOKEN_HERE"
+- **`url`** — permanent, content-addressed (`/s/<slug>/<hash>/`), immutable
+- **`latest_url`** — always the current version (`/s/<slug>/`)
+
+**Always share `latest_url`.** Republishing with the same slug updates it;
+old links never break.
+
+## Publishing
+
+```
+publish_page(html, title?, slug?, visibility="public"|"private",
+             files?, template?)
 ```
 
-Verify it worked:
+- Self-contained HTML preferred: inline CSS/JS, no external CDNs (CSP blocks
+  external origins). Web fonts/images: use data URIs or publish them via
+  `files`.
+- `files: {"style.css": "...", "app.js": "..."}` — side files; the page
+  references them RELATIVELY (`<link href="style.css">`) and they resolve
+  under the version hash automatically.
+- `template` presets:
+  - `"slides"` — injects a 5s auto-refresh shim: viewers on the latest URL
+    see the presenter's next publish within 5 seconds
+  - `"game"` / `"board"` / `"app"` — injects `window.pp.api()` (same-origin
+    JSON client) and ships an `api-notes.md` with the API contract
 
-```bash
-claude mcp list        # should show "paginate-pub"
+## Data-backed pages
+
+Every published page has a same-origin JSON API backed by D1:
+
+```
+GET    /api/<slug>          list records (newest first, ?limit= up to 500)
+GET    /api/<slug>/<id>     one record
+GET    /api/<slug>/_count   {"count": N}
+POST   /api/<slug>          create (16 KB max) -> {id}
+PUT    /api/<slug>/<id>     replace
+DELETE /api/<slug>/<id>     remove
 ```
 
-## The only file you need: CLAUDE.md
+Records are arbitrary JSON. Writes: 60 per 5 min per IP (rate-limited, 429
+with a hint). Use `window.pp.api(path, opts)` in game/board/app pages.
+Examples to study: `get_asset("paginate-game")` (leaderboard),
+`get_asset("paginate-board")` (kanban with 5s polling sync).
 
-Put this in any folder where you want Claude to be able to publish from:
+## Private pages, groups, and share links
 
-```md
-## Publishing pages
-When the user asks to publish, share, post, or "put online" a page or demo:
-1. Write the complete page as one self-contained HTML file (inline CSS/JS).
-2. Call the `publish_page` tool with { "html": <the html>, "title": <short title>,
-   "slug": <short-kebab-name> }.
-3. Reply with the returned URL — that's the deliverable.
+- `visibility: "private"` → the page moves to `private.paginate.dev/s/<slug>/`,
+  behind Cloudflare Access.
+- `create_group` + `grant_access(slug, group, emails)` → those emails sign in
+  with a one-time PIN; everything else is gated.
+- **`create_share_link(slug, {hours, max_uses, note})`** — the friendly way to
+  share a private page: a long unguessable link
+  (`private.paginate.dev/x/<token>/`) that anyone can open, no login. Default
+  48h expiry. `max_uses: 1` = one-time. Show the link once, tell the human to
+  copy it. `list_share_links` + `revoke_share_link` manage them. A leaked
+  link = access until it expires or is revoked — say this out loud when
+  sharing sensitive content.
 
-For something only specific people should see, add "visibility": "private"
-and tell the user it's private. To share it with a group, use `create_group`
-then `grant_access`. To move a page between public and private, use
-`set_visibility`. To see everything you've published, use `list_assets`.
-To see who has access and what things cost, use `list_users` and `get_status`.
-If a page might share a database with the wrong visibility, run
-`audit_leaks` first. To spin up a whole set of subdomains at once, use
-`launch_group`.
-```
+## Sites on their own subdomain
 
-## What you can just say
+`provision_subdomain(name, {security, owner_email?, asset_slug?})` →
+`<name>.paginate.dev`:
 
-- "make a page that shows X and publish it"
-- "make that private"
-- "share it with bob@example.com" / "create a group called 'team' with alice@ and carol@ and share it"
-- "move it back to public"
-- "list everything I've published"
-- "who has access to what?"
-- "what is this costing me?" / "any charges pending?" / "what's my usage?"
-- "check for leaks" / "is anything shared that shouldn't be?"
-- "send an email to myself from hello@paginate.dev" (to verified addresses only)
-- "spin up alpha.paginate.dev and beta.paginate.dev for the team"
-- "rotate my MCP token" (you'll get a new token to paste into the setup command)
+- `security: "open"` — anyone with the URL (default)
+- `security: "access"` — owner signs in via email one-time PIN
+  (`owner_email`); share links still work through the `/x/` bypass
+- `security: "private"` — group-only
 
-## Pricing reality (so you're never surprised)
+With `asset_slug`, the host's root `/` serves that page's latest version
+(e.g. `toolbox.paginate.dev` → the electrical toolbox).
 
-- Publishing, private pages, groups, users (up to 50), subdomains, inbound
-  email: **free**.
-- Outbound email: **free to verified destination addresses** (addresses you've
-  added with `add_email_address`). Email to anyone else requires a paid plan
-  ($5/mo) — the tool will tell you instead of sending if that's the case.
-- If a demo goes viral past 100k requests/day, Workers goes paid at $5/mo —
-  `get_status` will warn you well before that.
+## What you can't do (and what to say)
+
+- Email to anyone who hasn't verified their address — the tool refuses with
+  the exact next step; relay it, don't work around it.
+- Anything needing the owner's Cloudflare account (DNS changes, secret
+  rotation, DB provisioning, token rotation) — those tools refuse your
+  user token. Tell the human which dashboard action is needed, or have them
+  run it from an owner session.
+- Real-time collaboration features (WebSockets, push) — not built. The
+  slides preset's 5-second refresh is the current "live" story.
+
+## House rules
+
+- Verify before claiming: after publishing, fetch the URL and check the
+  body (the platform serves exactly what was stored).
+- `get_status` shows spend, seats, and usage vs free limits — mention costs
+  only if something is near a limit (it's $0/mo by design).
+- `audit_leaks` checks platform hygiene; run it if anything about visibility
+  seems off.
+- Slugs are forever-URLs: pick descriptive ones (`electrical-toolbox`, not
+  `page-2`). Don't rename unprompted.

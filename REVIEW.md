@@ -99,7 +99,7 @@ in the architecture fights you.
 | W4 | **No rate limit on the admin site** (only MCP has one). | Low | The site is Access-gated to a handful of people; still, a trivial per-IP bucket would be consistent. |
 | W5 | **MCP endpoint has no audit of per-token tool calls** (`ops_log` records events but not which token made them). | Low | Thread `role`/token id into `logOp` detail. |
 | W6 | **KV is the only content store** — eventual consistency already bit us twice (fixed with retries). | Accepted | Documented; retries in place; R2 remains the better store if it's ever enabled on the account. |
-| W7 | **Landing response was 200 on `/s/` misses** — fixed this session (now 404), but worth noting: any 200-on-miss pattern is cache-poisoning bait. | Fixed | Done. |
+| W7 | `/s/` misses return 404 (was 200 landing) — fixed 2026-10-11. | Fixed | Done. |
 | W8 | **`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes). | Low | Compare against real policy shapes from the API once one exists in the account. |
 
 **Overall security verdict:** solid for the threat model (friend + a few

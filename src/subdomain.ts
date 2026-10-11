@@ -14,8 +14,8 @@
 // wire access — the friend's "one-shot an idea".
 
 import { CfClient } from "./cf";
-import { ensureGroup, grantAccess, assetAppDomain } from "./access";
-import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText, type PageRow } from "./util";
+import { ensureGroup, grantAccess } from "./access";
+import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText } from "./util";
 
 export interface SubEnv {
   DB: D1Database;

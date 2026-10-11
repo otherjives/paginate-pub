@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { CfClient } from "./cf";
 import { serveAsset } from "./static"; // re-exported for tests
-import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText, type PageRow } from "./util";
+import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText } from "./util";
 import { contentTypeFor } from "./static";
 import { registerAccessTools } from "./access";
 import { registerEmailTools } from "./email";

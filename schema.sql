@@ -32,12 +32,6 @@ CREATE TABLE IF NOT EXISTS assets_groups (
   PRIMARY KEY (slug, hash, group_id)
 );
 
-CREATE TABLE IF NOT EXISTS users_t (
-  email TEXT PRIMARY KEY,
-  cf_user_id TEXT,
-  seat TEXT,
-  last_seen TEXT
-);
 
 CREATE TABLE IF NOT EXISTS subdomains (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
