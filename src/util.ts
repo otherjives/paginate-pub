@@ -91,9 +91,19 @@ export async function bearerRole(
   ownerSecret: string,
   db: D1Database,
 ): Promise<"admin" | "user" | null> {
+  // Header auth (canonical): "Authorization: Bearer <token>". URL auth
+  // (?tk=<token>) is a fallback for browser clients (e.g. the claude.ai web
+  // connector) that cannot set custom headers. URL tokens are pp_ user
+  // tokens only — the owner secret never rides in a URL.
+  let token = "";
   const h = request.headers.get("Authorization") ?? "";
-  if (!h.startsWith("Bearer ")) return null;
-  const token = h.slice(7);
+  if (h.startsWith("Bearer ")) token = h.slice(7);
+  else {
+    const u = new URL(request.url);
+    const tk = u.searchParams.get("tk");
+    if (tk) token = tk;
+  }
+  if (!token) return null;
   if (token.startsWith("pp_") && token.length >= 64) {
     const hash = await sha256Hex(token);
     const row = await db.prepare(

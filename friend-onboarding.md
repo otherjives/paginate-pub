@@ -90,6 +90,15 @@ With `asset_slug`, the host's root `/` serves that page's latest version
 - Real-time collaboration features (WebSockets, push) — not built. The
   slides preset's 5-second refresh is the current "live" story.
 
+## Browser vs terminal
+
+The setup command in TESTING.md is for Claude Code (terminal/desktop). If you
+only have claude.ai in a browser, the admin site also shows a connector URL
+(`https://mcp.paginate.dev/mcp?tk=<token>`) for Settings → Connectors → Add
+custom connector. Same token, same user role — but it rides in the URL, so
+treat it like a password: revoke and re-issue if it leaks. Browser support is
+experimental: verify it on your account before relying on it.
+
 ## House rules
 
 - Verify before claiming: after publishing, fetch the URL and check the

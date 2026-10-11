@@ -107,7 +107,7 @@ export async function listTokens(env: AdminSiteEnv): Promise<any[]> {
 
 // ---- the page ----
 const PAGE = (env: any, email: string, tokens: any[], flash: string) => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>paginate-pub admin</title><style>
 :root{--bg:#0f0f17;--card:#1a1a2e;--accent:#7b68ee;--text:#e6e6f0;--dim:#8a8aa0;--ok:#4ade80;--bad:#f87171}
 *{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:2rem 1rem;display:flex;justify-content:center;min-height:100vh}
@@ -175,10 +175,19 @@ export async function handleAdminSite(request: Request, env: AdminSiteEnv, ctx: 
     const form = new URLSearchParams(await request.text());
     const name = (form.get("name") ?? "").slice(0, 40);
     const { token } = await issueToken(env, email, name);
+    // CLI setup (header auth — canonical): Claude Code in a terminal or the
+    // desktop app. The command embeds the real token (shown once, this page).
     const cmd = `claude mcp add --transport http paginate-pub ${env.MCP_BASE}/mcp --header "Authorization: Bearer ${token}"`;
+    // Browser setup (claude.ai custom connector): browser connectors can't
+    // send custom headers, so the user token rides in the URL. User-role only
+    // — the owner secret never authenticates via URL (bearerOk reads headers).
+    const webUrl = `${env.MCP_BASE}/mcp?tk=${token}`;
     const tokens = (await listTokens(env)).filter((t) => t.email === email);
     return new Response(PAGE(env, email, tokens,
-      `Your token (shown once — copy it now):\n${token}\n\nRun this in your terminal:\n${cmd}`), {
+      `Your token (shown once — copy it now):\n${token}\n\n` +
+      `CLAUDE CODE (terminal or desktop app) — run this:\n${cmd}\n\n` +
+      `CLAUDE IN A BROWSER (claude.ai, experimental) — Settings → Connectors → Add custom connector, and use this URL instead:\n${webUrl}\n\n` +
+      `Same token, same access either way. Revoke it below if it leaks.`), {
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
     });
   }

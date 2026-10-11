@@ -10,7 +10,8 @@ Install from https://claude.com/claude-code if you don't have it, then run
 
 ## Step 2 — Get your MCP command
 
-The owner sends you one command (from the admin site). It looks like:
+Sign in at **admin.paginate.dev** (email one-time PIN), click "Generate token
+& setup command", and copy the command it shows:
 
 ```
 claude mcp add --transport http paginate-pub https://mcp.paginate.dev/mcp \
@@ -18,6 +19,11 @@ claude mcp add --transport http paginate-pub https://mcp.paginate.dev/mcp \
 ```
 
 Paste it into your terminal. Done — Claude Code now has the publishing tools.
+
+**No terminal? Claude in a browser only?** The admin site also shows a
+connector URL (`...mcp?tk=...`) for claude.ai → Settings → Connectors → Add
+custom connector. It's experimental — if the connector setup rejects it, note
+that in your report; the terminal path is the supported one.
 
 ## Step 3 — Do the thing (copy/paste any of these into Claude)
 

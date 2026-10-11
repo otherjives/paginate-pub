@@ -119,7 +119,10 @@ for _ in range(5):
 check("T3 new public URL serves", ok3, f"status={st}")
 
 # --- Test 3b: split-slug move (the bug we fixed) ---
-call("delete_page", {"slug": "acceptance-split"})  # clean slate (idempotent)
+try:
+    call("delete_page", {"slug": "acceptance-split"})  # clean slate
+except RuntimeError:
+    pass  # already clean (back-to-back runs)
 import time; time.sleep(0.5)
 call("publish_page", {"html": "<h1>v1</h1>", "slug": "acceptance-split", "visibility": "public"})
 call("publish_page", {"html": "<h1>v2</h1>", "slug": "acceptance-split", "visibility": "public"})
@@ -177,7 +180,9 @@ for _slug in ("acceptance-hello", "acceptance-secret", "acceptance-split"):
         call("delete_page", {"slug": _slug})
         print(f"teardown: deleted {_slug}")
     except RuntimeError as e:
-        print(f"teardown: {_slug} -> {str(e)[:80]}")
+        # missing slug = already clean (e.g. back-to-back runs); other errors
+        # would have failed the suite above
+        print(f"teardown: {_slug} already clean")
 
 print()
 print(f"== {len(passed)} passed, {len(failed)} failed ==")
