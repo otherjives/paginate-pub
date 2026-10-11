@@ -1,5 +1,6 @@
 name = "paginate-pub"
 main = "src/index.ts"
+
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
@@ -29,21 +30,9 @@ name = "EMAIL"
 binding = "ANALYTICS_ENGINE"
 dataset = "analytic_events"
 
-[[routes]]
-pattern = "pub.paginate.dev"
-custom_domain = true
 
-[[routes]]
-pattern = "private.paginate.dev"
-custom_domain = true
 
-[[routes]]
-pattern = "mcp.paginate.dev"
-custom_domain = true
 
-[[routes]]
-pattern = "admin.paginate.dev"
-custom_domain = true
 
 [triggers]
 crons = ["0 */6 * * *"]

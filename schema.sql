@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS subdomains (
   cf_app_id TEXT,
   dns_ok INTEGER DEFAULT 0,
   ssl TEXT,
+  security TEXT NOT NULL DEFAULT 'private',      -- 'open' | 'access' | 'private' (later: 'password')
+  owner_email TEXT,                               -- who the site belongs to (Access policy target)
+  visibility TEXT NOT NULL DEFAULT 'private',    -- 'public' | 'private' (routing)
   created_at TEXT NOT NULL
 );
 
@@ -115,3 +118,20 @@ CREATE TABLE IF NOT EXISTS rate_limit (
   n INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (k, window)
 );
+
+-- capability share links (Phase H2): long random tokens that grant access to
+-- one private slug. Token is stored SHA-256 hashed (shown once at creation),
+-- optional expiry + max uses, revocable. Served from private.<domain>/x/<token>/.
+CREATE TABLE IF NOT EXISTS share_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT,                    -- ISO date; NULL = never expires
+  max_uses INTEGER,                   -- NULL = unlimited
+  uses INTEGER NOT NULL DEFAULT 0,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_share_links_slug ON share_links(slug);
+CREATE INDEX IF NOT EXISTS idx_share_links_hash ON share_links(token_hash);

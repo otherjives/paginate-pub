@@ -17,6 +17,7 @@ import { bearerRole } from "./util";
 import { bumpCounter } from "./status";
 import { watchCosts } from "./status";
 import { handleAdminSite } from "./adminsite";
+import { handleShareRequest, SHARE_RE } from "./share";
 import { handleApi } from "./api";
 
 const MCP_ROUTE = "/mcp";
@@ -77,15 +78,56 @@ export default {
     // visibility from hostname: pub.<domain> => public,
     // private.<domain> and any other custom host => private.
     {
+      // Vanity hosts route by D1 lookup (security/visibility per site).
+      // Fixed hosts are hardcoded; unknown .<domain> hosts default PRIVATE
+      // (fail closed) — provision_subdomain must register a host before it
+      // serves publicly.
       let visibility: "public" | "private";
       if (host === `pub.${domain}`) visibility = "public";
-      else if (host === `private.${domain}`) visibility = "private";
-      else if (host.endsWith(`.${domain}`)) {
-        const label = host.slice(0, -(domain.length + 1));
-        visibility = label === "pub" ? "public" : "private";
+      else if (host === `private.${domain}` || host === `admin.${domain}`) visibility = "private";
+      else if (host.endsWith(`.${domain}`) && host !== domain) {
+        const sub = await env.DB.prepare(
+          "SELECT visibility, security FROM subdomains WHERE host = ?",
+        ).bind(host).first<{ visibility: string; security: string }>();
+        if (!sub) visibility = "private";                    // unregistered: serve nothing public
+        else if (sub.security === "open") visibility = "public";
+        else visibility = (sub.visibility as "public" | "private") ?? "private";
       } else {
         visibility = "public"; // workers.dev fallback
       }
+      // ---- vanity-host root: / serves the host's asset slug (latest) ----
+      if (host.endsWith(`.${domain}`) && host !== domain &&
+          host !== `pub.${domain}` && host !== `private.${domain}` &&
+          (url.pathname === "/" || url.pathname === "")) {
+        const sub = await env.DB.prepare(
+          "SELECT asset_slug FROM subdomains WHERE host = ? AND asset_slug IS NOT NULL",
+        ).bind(host).first<{ asset_slug: string }>();
+        if (sub) {
+          const latest = await env.DB.prepare(
+            "SELECT hash, visibility FROM pages WHERE slug = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+          ).bind(sub.asset_slug).first<{ hash: string; visibility: string }>();
+          if (latest && latest.visibility === visibility) {
+            const root = new URL(request.url);
+            root.pathname = `/s/${sub.asset_slug}/${latest.hash}/`;
+            return new Response(null, { status: 302, headers: { Location: root.pathname, "Cache-Control": "no-store" } });
+          }
+        }
+      }
+
+      // ---- capability share links (/x/<token>/...) ----
+      // Token links live on private.<domain> and serve the page's content
+      // under the token prefix. They bypass nothing — the Worker validates
+      // the token itself; Access never fronts private.<domain>/x/* (the
+      // blanket private-host app, if any, must not cover /x/).
+      if (visibility === "private" && SHARE_RE.test(url.pathname)) {
+        const share = await handleShareRequest(env, request);
+        if (share) return share;
+        return new Response("not found", {
+          status: 404,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+        });
+      }
+
       // ---- per-page data API (/api/<slug>/...) ----
       const api = await handleApi(request, env, visibility);
       if (api) return api;

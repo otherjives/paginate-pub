@@ -12,6 +12,7 @@ import { registerEmailTools } from "./email";
 import { registerSubdomainTools } from "./subdomain";
 import { registerStatusTools } from "./status";
 import { registerAdminTools } from "./admin";
+import { registerShareTools } from "./share";
 
 export interface ToolEnv {
   DB: D1Database;
@@ -362,6 +363,7 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
   // Phase F2: admin tools (DNS, secrets, token rotation, ops log, create_db).
   // Owner-only tools refuse per-user tokens (role gating).
   (registerAdminTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" }, role);
+  registerShareTools(server, env);
 
   return server;
 }
