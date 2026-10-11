@@ -89,6 +89,12 @@ claude mcp add --transport http paginate-pub https://mcp.paginate.dev/mcp \
   --header "Authorization: Bearer <token>"
 ```
 
+## Handover documents
+
+- `TESTING.md` — trial instructions for a test friend (install → one-shots → report)
+- `OWNERSHIP.md` — the full-possession path: fork → account transfer → MCP rewrite
+- `REVIEW.md` — capability/security/cleanliness audit with fix history
+
 ## Testing
 
 `scripts/acceptance.py` — 26 checks against the live platform (publish,
@@ -107,8 +113,10 @@ scripts live in Temp during development and are not part of the repo.
   DNS record + domain mapping (provisioned by the tool, ~1 min)
 - Published pages run with a strict CSP (no external origins); side files
   publish under the version hash so relative paths "just work"
-- The acceptance suite keeps its own fixtures (slugs `acceptance-*` and
-  Access app on `private.paginate.dev/s/acceptance-secret`) — do not delete
+- The acceptance suite is self-cleaning: it deletes its own `acceptance-*`
+  fixtures after every run. The path-scoped Access app on
+  `private.paginate.dev/s/acceptance-secret` persists and is adopted
+  idempotently on the next run
 
 ## Security notes
 

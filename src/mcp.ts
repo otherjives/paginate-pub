@@ -237,7 +237,10 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
           : (await env.DB.prepare("SELECT * FROM pages WHERE slug = ?").bind(slug).all<PageRow>()).results;
         if (!rows.length) return errText(`No asset with slug '${slug}'`);
         for (const r of rows) {
+          // delete both possible prefixes (an interrupted set_visibility can
+          // leave the copy under the other visibility)
           await env.CACHE.delete(assetKey(r.visibility, r.slug, r.hash));
+          await env.CACHE.delete(assetKey(r.visibility === "public" ? "private" : "public", r.slug, r.hash));
         }
         if (hash) {
           await env.DB.prepare("DELETE FROM pages WHERE slug = ? AND hash = ?").bind(slug, hash).run();

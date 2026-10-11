@@ -166,6 +166,19 @@ try:
 except RuntimeError as e:
     check("T8 create_db ok (idempotent re-run)", "already exists" in str(e).lower(), str(e)[:150])
 
+# --- Teardown: leave no residue (suite is self-cleaning) ---
+# The suite's own fixtures (acceptance-* slugs) are deleted after every run:
+# KV copies via the platform's own tools, then D1 rows. The path-scoped Access
+# app on private.paginate.dev/s/acceptance-secret is kept — grant_access
+# adopts it idempotently on the next run (deleting/recreating it per run
+# would churn Access apps and can hit rate limits).
+for _slug in ("acceptance-hello", "acceptance-secret", "acceptance-split"):
+    try:
+        call("delete_page", {"slug": _slug})
+        print(f"teardown: deleted {_slug}")
+    except RuntimeError as e:
+        print(f"teardown: {_slug} -> {str(e)[:80]}")
+
 print()
 print(f"== {len(passed)} passed, {len(failed)} failed ==")
 if failed:
