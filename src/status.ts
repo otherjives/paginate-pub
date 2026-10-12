@@ -68,10 +68,9 @@ export async function getStatus(env: StatusEnv) {
 
   // self-metered usage for today
   const reqToday = await getCounter(env.DB, `req:${today}`);
-  const aeWritesToday = await getCounter(env.DB, `ae:${today}`);
-  const emailMtd = await getCounter(env.DB, `email:${today.slice(0, 7)}`);
+  // (AE writes / emails are not self-metered — Workers usage comes from the CF API)
 
-  // KV storage estimate (count keys; KV has no cheap size API — count is the proxy)
+  // D1 row counts are the storage proxy (KV has no cheap size API; keys aren't counted)
   // D1 tables/pages count
   const pageCount = (await env.DB.prepare("SELECT COUNT(*) AS n FROM pages").first<{ n: number }>())?.n ?? 0;
   const groupCount = (await env.DB.prepare("SELECT COUNT(*) AS n FROM groups_t").first<{ n: number }>())?.n ?? 0;
@@ -90,7 +89,7 @@ export async function getStatus(env: StatusEnv) {
 
   return {
     domain: env.DOMAIN,
-    plan: "Workers Free + Zero Trust Free (50 users)",
+    plan: "Workers Free + Zero Trust Free (50 users)", // assumed free-tier plan; thresholds below are free-tier limits
     spend: {
       this_month_usd: Number(thisMonthSpend.toFixed(2)),
       pending_invoices: pending.length,
@@ -100,9 +99,7 @@ export async function getStatus(env: StatusEnv) {
     usage: {
       workers_requests_today: reqToday,
       workers_free_limit_per_day: 100_000,
-      analytics_writes_today: aeWritesToday,
-      analytics_free_limit_per_day: 100_000,
-      emails_sent_this_month: emailMtd,
+      // AE writes / emails sent: not self-metered; see the CF API usage below
       email_note: "Free only to verified destination addresses; arbitrary recipients require Workers Paid ($5/mo).",
       pages_published: pageCount,
       groups: groupCount,
@@ -337,12 +334,14 @@ export async function watchCosts(env: StatusEnv) {
       const dests = await cf.listEmailAddresses();
       const owner = (dests as any[]).find((d) => d.verified);
       if (owner && env.EMAIL) {
-        await env.EMAIL.send({
-          from: { email: `alerts@${env.DOMAIN}`, name: "paginate-pub" },
-          to: { email: owner.email },
-          subject: `[paginate-pub] ${alerts.length} alert(s)`,
-          text: alerts.join("\n"),
-        });
+        const { sendMimeEmail } = await import("./email");
+        await sendMimeEmail(
+          env.EMAIL,
+          `alerts@${env.DOMAIN}`,
+          owner.email,
+          `[paginate-pub] ${alerts.length} alert(s)`,
+          alerts.join("\n"),
+        );
       }
     } catch { /* notification is best-effort */ }
   }

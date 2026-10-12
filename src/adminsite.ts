@@ -28,34 +28,43 @@ export interface AdminSiteEnv {
 interface AccessIdentity { email: string; name?: string }
 
 // Verify the Cf-Access-Jwt-Assertion header. Returns the identity or null.
-export async function verifyAccessJwt(request: Request, env: AdminSiteEnv): Promise<AccessIdentity | null> {
+export async function verifyAccessJwt(
+  request: Request,
+  env: AdminSiteEnv,
+  expectedAud?: string,
+): Promise<AccessIdentity | null> {
+  // expectedAud: the Access-app AUD the caller expects (default: this admin
+  // site's). Pass "any" to accept any team-signed JWT (signature, iss and
+  // exp are still enforced) — used by the private-page data API, where the
+  // visitor's JWT may come from the blanket private-host app OR a
+  // path-scoped per-slug app, which have different AUDs.
   const token = request.headers.get("Cf-Access-Jwt-Assertion");
   if (!token) return null;
   try {
     // fetch current public keys (cached by CF; small)
     const jwksUrl = `https://${env.ACCESS_TEAM}/cdn-cgi/access/certs`;
-    const jwks = await (await fetch(jwksUrl)).json();
+    const jwks = (await (await fetch(jwksUrl)).json()) as { keys?: { kid?: string }[] };
     // decode header to find kid
     const [h64] = token.split(".");
     const header = JSON.parse(atob(h64.replace(/-/g, "+").replace(/_/g, "/")));
-    const jwk = (jwks.keys ?? []).find((k: any) => k.kid === header.kid);
+    const jwk = (jwks.keys ?? []).find((k: any) => k.kid === header.kid) as JsonWebKey | undefined;
     if (!jwk) return null;
     const key = await crypto.subtle.importKey(
       "jwk", jwk, { name: "RS256", hash: "SHA-256" }, false, ["verify"]);
-    // verify signature over header.payload
+    // verify signature over the ASCII bytes of "<header>.<payload>"
     const [hb, pb] = token.split(".");
+    const signed = new TextEncoder().encode(`${hb}.${pb}`);
     const ok = await crypto.subtle.verify(
       "RS256", key,
-      new Uint8Array(base64UrlToBytes(hb).concat(Array.from(base64UrlToBytes(pb)))).length
-        ? new Uint8Array(base64UrlDecode(hb + "." + pb))
-        : new Uint8Array(),
+      signed,
       base64UrlToBytes(token.split(".")[2]));
     if (!ok) return null;
     const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(pb)));
     // iss + aud + exp checks (iss = team domain, aud = this application)
     const now = Math.floor(Date.now() / 1000);
     if (payload.iss !== `https://${env.ACCESS_TEAM}`) return null;
-    if (payload.aud !== env.ADMIN_AUD) return null;
+    const want = expectedAud ?? env.ADMIN_AUD;
+    if (want !== "any" && payload.aud !== want) return null;
     if (payload.exp && payload.exp < now) return null;
     return { email: payload.email, name: payload.name };
   } catch {
@@ -71,7 +80,6 @@ function base64UrlToBytes(s: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-function base64UrlDecode(s: string): Uint8Array { return base64UrlToBytes(s); }
 
 // ---- token issuing ----
 function randomToken(): string {
@@ -106,7 +114,7 @@ export async function listTokens(env: AdminSiteEnv): Promise<any[]> {
 }
 
 // ---- the page ----
-const PAGE = (env: any, email: string, tokens: any[], flash: string) => `<!doctype html>
+const PAGE = (email: string, tokens: any[], flash: string) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>paginate-pub admin</title><style>
 :root{--bg:#0f0f17;--card:#1a1a2e;--accent:#7b68ee;--text:#e6e6f0;--dim:#8a8aa0;--ok:#4ade80;--bad:#f87171}
@@ -179,7 +187,7 @@ export async function handleAdminSite(request: Request, env: AdminSiteEnv, ctx: 
   // GET: page
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
     const tokens = (await listTokens(env)).filter((t) => t.email === email);
-    return new Response(PAGE(env, email, tokens, ""), {
+    return new Response(PAGE(email, tokens, ""), {
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
     });
   }
@@ -197,7 +205,7 @@ export async function handleAdminSite(request: Request, env: AdminSiteEnv, ctx: 
     // — the owner secret never authenticates via URL (bearerOk reads headers).
     const webUrl = `${env.MCP_BASE}/mcp?tk=${token}`;
     const tokens = (await listTokens(env)).filter((t) => t.email === email);
-    return new Response(PAGE(env, email, tokens,
+    return new Response(PAGE(email, tokens,
       `Your token (shown once — copy it now):\n${token}\n\n` +
       `CLAUDE CODE (terminal or desktop app) — run this:\n${cmd}\n\n` +
       `CLAUDE IN A BROWSER (claude.ai, experimental) — Settings → Connectors → Add custom connector, and use this URL instead:\n${webUrl}\n\n` +

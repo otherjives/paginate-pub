@@ -18,7 +18,7 @@
 //
 // Auth: public slugs get a per-IP write rate limit (60 writes / 5 min).
 // Private slugs: Cloudflare Access already fronts the whole private host;
-//   the worker additionally requires the JWT via requirePrivateAuth().
+//   the worker additionally verifies the Access JWT in-Worker (verifyAccessJwt).
 // Reads on private are same — Access-gated at the edge.
 
 import { verifyAccessJwt } from "./adminsite";
@@ -98,7 +98,10 @@ export async function handleApi(
 
   // Private host: Access must have authenticated (edge) — verify the JWT too.
   if (visibility === "private") {
-    const identity = await verifyAccessJwt(request, env as any);
+    // Access already gated this request at the edge (blanket app or per-slug
+    // app); the JWT may carry either app's AUD, so enforce signature/iss/exp
+    // only, not a specific AUD.
+    const identity = await verifyAccessJwt(request, env as any, "any");
     if (!identity) {
       return j({ error: "authentication required", hint: "This is a private page API. Sign in via the Cloudflare Access prompt (your email must be in a granted group)." }, 401);
   }

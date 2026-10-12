@@ -1,6 +1,6 @@
 # Project Review — paginate-pub
 
-**Reviewed:** 2026-10-11 · state: 26/26 acceptance checks green, deployed to
+**Reviewed:** 2026-10-11 · state: 28/28 acceptance checks green, deployed to
 paginate.dev (its own Cloudflare account, isolated from all other accounts).
 
 ---
@@ -103,8 +103,8 @@ in the architecture fights you.
 | W8 | ~~**`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes).~~ FIXED 2026-10-11: detects ip 0.0.0.0/0 + bypass decisions, allowlists the expected /x bypass, name-matcher repaired | ~~Low~~ | Compare against real policy shapes from the API once one exists in the account. |
 
 **Overall security verdict:** solid for the threat model (friend + a few
-collaborators + the public internet). W3 is the one real issue to fix before
-sharing private pages between different groups on the same host.
+collaborators + the public internet). All W-items in the table above are
+fixed; the remaining watch-items live in FUTURE.md.
 
 ---
 
@@ -151,5 +151,5 @@ FUTURE.md:
 
 1. CI: typecheck action (cheap, keeps collaborators honest).
 2. Public form-submission endpoint (with Turnstile) if forms are wanted.
-3. Unit tests for util/static path logic (nice-to-have; the 26-check
+3. Unit tests for util/static path logic (nice-to-have; the 28-check
    acceptance suite is the real gate).

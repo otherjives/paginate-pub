@@ -4,7 +4,7 @@
 //   mcp.paginate.dev/mcp        -> MCP endpoint (Bearer MCP_TOKEN)
 //   pub.paginate.dev/s/...      -> public assets (no auth)
 //   private.paginate.dev/s/...  -> private assets (Cloudflare Access sits in
-//                                  front in the dashboard; the Worker also
+//                                  front (API- or dashboard-configured); the Worker also
 //                                  only serves from the private/ KV prefix)
 //   <anything else>.paginate.dev/s/... -> resolved by hostname label:
 //                                  'pub' => public, otherwise private.
@@ -22,7 +22,11 @@ import { handleApi } from "./api";
 
 const MCP_ROUTE = "/mcp";
 
-// simple in-memory token-bucket rate limit for the MCP endpoint (60/min)
+// best-effort in-memory token-bucket rate limit for the MCP endpoint (60/min).
+// ADVISORY ONLY: in-memory buckets are per-isolate in Workers and reset on
+// every isolate recycle (see api.ts for the D1-counter pattern we use where
+// the limit is a real guarantee). Good enough to stop a runaway agent loop;
+// not a security control.
 const buckets = new Map<string, { ts: number; n: number }>();
 function rateLimited(ip: string): boolean {
   const now = Date.now();
@@ -84,7 +88,7 @@ export default {
       // serves publicly.
       let visibility: "public" | "private";
       if (host === `pub.${domain}`) visibility = "public";
-      else if (host === `private.${domain}` || host === `admin.${domain}`) visibility = "private";
+      else if (host === `private.${domain}`) visibility = "private";
       else if (host.endsWith(`.${domain}`) && host !== domain) {
         const sub = await env.DB.prepare(
           "SELECT visibility, security FROM subdomains WHERE host = ?",

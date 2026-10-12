@@ -151,7 +151,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
     async ({ limit }: any) => {
       try {
         const rows = await env.DB.prepare(
-          "SELECT op, detail, ok, at FROM ops_log ORDER BY id DESC LIMIT ?",
+          "SELECT op, detail, actor, ok, at FROM ops_log ORDER BY id DESC LIMIT ?",
         ).bind(Math.min(limit ?? 50, 200)).all();
         return jsonText({ count: rows.results.length, entries: rows.results });
       } catch (e) {
@@ -166,9 +166,9 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
     {
       title: "Create a small database for a page",
       description:
-        "Provision a D1 database tagged with a visibility. A page can only bind a " +
-        "database of the SAME visibility — the platform warns you otherwise " +
-        "(audit_leaks checks this).",
+        "Provision a D1 database tagged with a visibility (bookkeeping: the " +
+        "platform does not yet wire page-to-db bindings — see FUTURE.md). " +
+        "Pick the same visibility as the pages that will use it.",
       inputSchema: {
         name: z.string().describe("Database name, e.g. 'comments-for-my-demo'"),
         visibility: z.enum(["public", "private"]),

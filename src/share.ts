@@ -8,8 +8,9 @@
 //   so relative assets (css/js) and the slides auto-refresh both keep working.
 //   Dead/expired/revoked tokens return an opaque 404 (no oracle).
 //
-// Links live on private.<domain> — NOT on gated vanity hosts — so a token
-// works identically regardless of the site's security mode (open/access/...).
+// Canonical token URLs live on private.<domain>/x/<token>/; gated vanity
+// hosts also resolve /x/ paths via their <host>/x bypass apps, so a link
+// works regardless of the site's security mode (open/access/...).
 
 import { sha256Hex } from "./util";
 
@@ -68,7 +69,7 @@ export async function revokeShareLink(env: ShareEnv, id: number): Promise<number
   return r.meta.changes ?? 0;
 }
 
-interface Validated { slug: string }
+interface Validated { slug: string; hash: string }
 
 // Validate a token from the URL. Returns the slug it unlocks, or null.
 export async function validateShareToken(env: ShareEnv, token: string): Promise<Validated | null> {
@@ -79,7 +80,7 @@ export async function validateShareToken(env: ShareEnv, token: string): Promise<
   if (!row || row.revoked) return null;
   if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return null;
   if (row.max_uses !== null && row.uses >= row.max_uses) return null;
-  return { slug: row.slug };
+  return { slug: row.slug, hash };
 }
 
 
@@ -125,7 +126,7 @@ export async function handleShareRequest(
   }
   // count the use BEFORE serving so max_uses is enforced even under racing
   // requests (D1 is single-writer: the counter is authoritative).
-  const usedHash = await sha256Hex(token);
+  const usedHash = v.hash; // already computed by validateShareToken
   const counted = await env.DB.prepare(
     `UPDATE share_links SET uses = uses + 1
      WHERE token_hash = ? AND (max_uses IS NULL OR uses < max_uses)`,
@@ -165,13 +166,13 @@ export function registerShareTools(server: any, env: ShareEnv, actor: string = "
     async ({ slug, hours, max_uses, note }: any) => {
       try {
         const r = await createShareLink(env, slug, { hours: hours ?? 48, max_uses, note });
-        await logOp(env.DB, "create_share_link", { slug, hours, max_uses, note }, true);
+        await logOp(env.DB, "create_share_link", { slug, hours, max_uses, note }, true, actor);
         return jsonText({
           ...r,
           warning: "Copy the token now — it is never shown again. Anyone with this URL can view the page until it expires.",
         });
       } catch (e) {
-        await logOp(env.DB, "create_share_link", { error: String(e), slug }, false);
+        await logOp(env.DB, "create_share_link", { error: String(e), slug }, false, actor);
         return errText(String(e));
       }
     },
@@ -204,7 +205,7 @@ export function registerShareTools(server: any, env: ShareEnv, actor: string = "
     async ({ id }: any) => {
       try {
         const changes = await revokeShareLink(env, id);
-        await logOp(env.DB, "revoke_share_link", { id, changes }, true);
+        await logOp(env.DB, "revoke_share_link", { id, changes }, true, actor);
         return jsonText({ ok: changes > 0, id, changes });
       } catch (e) {
         return errText(String(e));

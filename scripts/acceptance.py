@@ -5,7 +5,11 @@ import http.client, json, os, socket, ssl, sys, urllib.request, urllib.parse
 
 MCP = os.environ.get("PAGINATE_MCP_TOKEN", "")
 assert MCP, "set PAGINATE_MCP_TOKEN"
-IP = "104.21.2.132"; HOST = "mcp.paginate.dev"
+# Pinned edge IP: this sandbox's resolver cannot resolve the AAAA-only custom
+# domains. Override PP_EDGE_IP if Cloudflare rotates it. Cert validation is
+# disabled because we connect by IP — acceptable on this trusted dev box; on a
+# real network, resolve DNS normally and re-enable verification.
+IP = os.environ.get("PP_EDGE_IP", "104.21.2.132"); HOST = "mcp.paginate.dev"
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 class C(http.client.HTTPSConnection):

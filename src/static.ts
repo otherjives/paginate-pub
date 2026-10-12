@@ -1,6 +1,7 @@
 // src/static.ts — serve content-addressed assets from KV with immutable caching.
 //
-// URL shape: /s/<slug>/<hash16>/  ->  KV key <visibility>/<slug>/<hash16>/index.html
+// URL shape: /s/<slug>/<hash16>/  ->  KV key <visibility>/<slug>/<hash16>
+// (legacy <hash>/index.html keys are read as a fallback and self-healed)
 // Everything under a /<hash16>/ segment is immutable by construction, so we
 // serve it with `Cache-Control: public, max-age=31536000, immutable` — the
 // browser cache and Cloudflare edge do all the heavy lifting.
@@ -111,6 +112,7 @@ function respondWith(
         doubles: [value.byteLength],
         indexes: [slug],
       });
+
     } catch { /* analytics must never break serving */ }
   };
   if (ctx) ctx.waitUntil(Promise.resolve().then(writePoint));

@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS dbs (
   created_at TEXT NOT NULL
 );
 
+-- db_bindings: forward-compatible schema for a page-to-db binding feature
+-- that is NOT yet built (nothing writes this table; audit_leaks rule 1 and
+-- fix_leak:'dbmm' guard it for when it is). See FUTURE.md.
 CREATE TABLE IF NOT EXISTS db_bindings (
   slug TEXT NOT NULL,
   hash TEXT NOT NULL,

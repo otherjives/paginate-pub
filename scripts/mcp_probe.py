@@ -9,10 +9,13 @@ import os
 MCP = os.environ.get('PAGINATE_MCP_TOKEN', '')
 if not MCP:
     raise SystemExit('Set PAGINATE_MCP_TOKEN env var to the MCP bearer token')
-IP = "104.21.2.132"
+IP = os.environ.get("PP_EDGE_IP", "104.21.2.132")  # pin: sandbox AAAA-only resolver; override if CF rotates
 HOST = "mcp.paginate.dev"
 
 ctx = ssl.create_default_context()
+# NOTE: cert validation is disabled because we connect by pinned edge IP.
+# This is a token-bearing connection — acceptable on this trusted dev box,
+# but resolve DNS normally (and re-enable verification) on a real network.
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 

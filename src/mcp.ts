@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { CfClient } from "./cf";
 import { serveAsset } from "./static"; // re-exported for tests
-import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText } from "./util";
+import { slugify, sha256Hex16, assetKey, logOp, jsonText, errText, type PageRow } from "./util";
 import { contentTypeFor } from "./static";
 import { registerAccessTools } from "./access";
 import { registerEmailTools } from "./email";
@@ -73,7 +73,6 @@ const TEMPLATE_API_NOTES = `# API notes for this page
 
 export function createServer(env: ToolEnv, role: "admin" | "user" = "admin", actor: string = "unknown") {
   const server = new McpServer({ name: "paginate-pub", version: "1.0.0" });
-  const cf = new CfClient(env);
 
   // ---------- publish_page ----------
   server.registerTool(
@@ -358,7 +357,7 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin", act
   registerEmailTools(server, env, actor);
 
   // Phase E: subdomain provisioning + launch_group
-  (registerSubdomainTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" });
+  (registerSubdomainTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" }, actor);
 
   // Phase F: status / audit / leak tools
   registerStatusTools(server, env, actor);

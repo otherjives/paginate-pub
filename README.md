@@ -66,7 +66,7 @@ src/
   util.ts         slugify, hashing, KV keys, bearer auth (roles)
 schema.sql        idempotent D1 schema (all tables)
 scripts/
-  acceptance.py   26-check acceptance suite against the live platform
+  acceptance.py   28-check acceptance suite against the live platform
   mcp_probe.py    minimal MCP client (sandbox edge-IP workaround)
 ```
 
@@ -122,8 +122,9 @@ scripts live in Temp during development and are not part of the repo.
 
 ## Security notes
 
-- Owner secret and per-user tokens are SHA-256-hashed in D1 (`mcp_tokens`),
-  shown once, 90-day expiry, revocable; owner-only tools are role-gated
+- Per-user tokens are SHA-256-hashed in D1 (`mcp_tokens`), shown once,
+  90-day expiry, revocable; the owner secret lives only as the `MCP_TOKEN`
+  Worker secret (never in D1); owner-only tools are role-gated
 - Share-link tokens are 32-byte random, SHA-256 at rest, use-counted before
   serving (one-time links are race-safe), served `no-store`
 - Unregistered hosts fail closed; dead share links return an opaque 404

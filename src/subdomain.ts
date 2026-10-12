@@ -1,14 +1,13 @@
 // src/subdomain.ts — one-shot subdomain provisioning + group launcher.
 //
 // provision_subdomain:
-//   1. create proxied DNS A record (Workers-managed record is AAAA-only; the
-//      dashboard/API refuses a duplicate A on a Workers-managed host — so we
-//      attach the Worker custom domain FIRST, which creates the managed
-//      record, and skip creating our own A)
-//   2. attach the hostname as a Worker custom domain (exact hostnames only —
-//      no wildcards)
-//   3. optionally create an Access app protecting the host for a group
-//   4. track everything in D1 `subdomains`
+//   1. attach the hostname as a Worker custom domain (exact hostnames only,
+//      no wildcards) — this makes Cloudflare create the Workers-managed
+//      AAAA DNS record; we never create our own A/AAAA record
+//   2. per security mode, create Access app(s): 'access' = owner email
+//      (and/or group) allow policy; 'private' = group-only; both also get a
+//      <host>/x bypass app so share-link tokens reach the Worker
+//   3. track everything in D1 `subdomains`
 //
 // launch_group: create group + provision N subdomains + publish N pages +
 // wire access — the friend's "one-shot an idea".
@@ -63,9 +62,13 @@ export async function provisionSubdomain(
   //    policy, plus a /x/* BYPASS policy so capability share links reach the
   //    Worker (the Worker validates the token itself).
   let cfAppId: string | null = null;
-  if (security === "access") {
+  if (security === "access" || security === "private") {
+    // 'access' = owner email (and/or group); 'private' = group only.
     const group = opts.group ? await ensureGroup(env as any, opts.group, []) : null;
-    if (!opts.owner_email && !group) {
+    if (security === "private" && !group) {
+      throw new Error("security='private' needs a group (group-only gate)");
+    }
+    if (security === "access" && !opts.owner_email && !group) {
       throw new Error("security='access' needs owner_email and/or group");
     }
     const app = await cf.createAccessApp({
@@ -147,7 +150,7 @@ export interface LaunchSpec {
   pages?: Array<{ title: string; slug?: string; html: string; visibility?: "public" | "private" }>;
 }
 
-export async function launchGroup(env: SubEnv, spec: LaunchSpec) {
+export async function launchGroup(env: SubEnv, spec: LaunchSpec, actor: string = "unknown") {
   const steps: any[] = [];
 
   // 1. group
@@ -161,10 +164,17 @@ export async function launchGroup(env: SubEnv, spec: LaunchSpec) {
     const hash = await sha256Hex16(p.html);
     const visibility = p.visibility ?? "private";
     const key = assetKey(visibility, s, hash);
-    await env.CACHE.put(key, p.html, { contentType: "text/html; charset=utf-8" });
-    if ((await env.CACHE.get(key)) === null) {
+    // KV put options take { metadata: {...} } — contentType goes in metadata
+    // (extension-less keys are served as text/html by the static path, but
+    // record it anyway for correctness).
+    await env.CACHE.put(key, p.html, { metadata: { contentType: "text/html; charset=utf-8" } });
+    // read-after-write verify with retry, like publish_page
+    let ok = (await env.CACHE.get(key)) !== null;
+    for (let attempt = 0; !ok && attempt < 5; attempt++) {
       await new Promise((r) => setTimeout(r, 250));
+      ok = (await env.CACHE.get(key)) !== null;
     }
+    if (!ok) throw new Error(`KV write for '${s}' did not become readable in time — retry publish`);
     const base = visibility === "public" ? env.PUBLIC_BASE : env.PRIVATE_BASE;
     const url = `${base}/s/${s}/${hash}/`;
     const now = new Date().toISOString();
@@ -191,7 +201,7 @@ export async function launchGroup(env: SubEnv, spec: LaunchSpec) {
     steps.push({ step: "subdomain", ...r });
   }
 
-  await logOp(env.DB, "launch_group", { group: spec.group_name, pages: published.length, subdomains: subs.length }, true);
+  await logOp(env.DB, "launch_group", { group: spec.group_name, pages: published.length, subdomains: subs.length }, true, actor);
   return {
     group: group.name,
     emails: spec.emails,
@@ -203,7 +213,7 @@ export async function launchGroup(env: SubEnv, spec: LaunchSpec) {
 }
 
 import { z } from "zod";
-export function registerSubdomainTools(server: any, env: SubEnv) {
+export function registerSubdomainTools(server: any, env: SubEnv, actor: string = "unknown") {
 
   server.registerTool(
     "provision_subdomain",
@@ -235,10 +245,10 @@ export function registerSubdomainTools(server: any, env: SubEnv) {
           security: security ?? (protect ? "access" : undefined),
           owner_email,
         });
-        await logOp(env.DB, "provision_subdomain", r, true);
+        await logOp(env.DB, "provision_subdomain", r, true, actor);
         return jsonText(r);
       } catch (e) {
-        await logOp(env.DB, "provision_subdomain", { error: String(e) }, false);
+        await logOp(env.DB, "provision_subdomain", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -271,9 +281,9 @@ export function registerSubdomainTools(server: any, env: SubEnv) {
     },
     async (spec: LaunchSpec) => {
       try {
-        return jsonText(await launchGroup(env, spec));
+        return jsonText(await launchGroup(env, spec, actor));
       } catch (e) {
-        await logOp(env.DB, "launch_group", { error: String(e) }, false);
+        await logOp(env.DB, "launch_group", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },

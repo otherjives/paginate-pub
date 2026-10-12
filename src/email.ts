@@ -24,7 +24,41 @@ async function verifiedDestinations(env: EmailEnv): Promise<Set<string>> {
   return new Set(list.map((a: any) => String(a.email).toLowerCase()));
 }
 
+import { EmailMessage } from "cloudflare:email";
 import { z } from "zod";
+
+// The Workers Email binding takes a constructed EmailMessage with raw MIME
+// (not a plain object). Builds a minimal multipart/alternative message.
+export async function sendMimeEmail(
+  binding: any,
+  from: string,
+  to: string,
+  subject: string,
+  text: string,
+  html?: string,
+): Promise<void> {
+  const boundary = "pp_" + Date.now().toString(36);
+  const headers = [
+    `From: paginate-pub <${from}>`,
+    `To: <${to}>`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+  ];
+  let raw: string;
+  if (html) {
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    raw =
+      headers.join("\r\n") + "\r\n" +
+      `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${text}\r\n` +
+      `--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${html}\r\n` +
+      `--${boundary}--\r\n`;
+  } else {
+    headers.push("Content-Type: text/plain; charset=utf-8");
+    raw = headers.join("\r\n") + "\r\n\r\n" + text + "\r\n";
+  }
+  await binding.send(new EmailMessage(from, to, raw));
+}
+
 export function registerEmailTools(server: any, env: EmailEnv, actor: string = "unknown") {
 
   server.registerTool(
@@ -59,13 +93,14 @@ export function registerEmailTools(server: any, env: EmailEnv, actor: string = "
           );
         }
         const sender = from ?? `hello@${env.DOMAIN}`;
-        await env.EMAIL.send({
-          from: { email: sender, name: "paginate-pub" },
-          to: { email: dest },
+        await sendMimeEmail(
+          env.EMAIL,
+          sender,
+          dest,
           subject,
-          text: body_text ?? "",
-          html: body_html,
-        });
+          body_text ?? "",
+          body_html,
+        );
         await logOp(env.DB, "send_email", { to: dest, subject }, true, actor);
         return jsonText({ sent: true, to: dest, from: sender });
       } catch (e) {

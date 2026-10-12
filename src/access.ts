@@ -7,7 +7,7 @@
 //            app on private.<domain> whose policy includes the granted groups
 //
 // The Worker host private.<domain> should ALSO have a blanket Access app in the
-// dashboard as a backstop; these tools manage per-asset grants precisely.
+// dashboard or API as a backstop; these tools manage per-asset grants precisely.
 
 import { CfClient } from "./cf";
 import { logOp, jsonText, errText } from "./util";
