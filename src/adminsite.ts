@@ -162,6 +162,20 @@ export async function handleAdminSite(request: Request, env: AdminSiteEnv, ctx: 
   }
   const email = identity.email;
 
+  // Rate limit mutating actions per identity (W4): 20 actions / 10 min.
+  // Same D1-counter pattern as the per-page API (in-memory buckets are
+  // per-isolate in Workers and never fire).
+  if (request.method === "POST") {
+    const window = Math.floor(Date.now() / (10 * 60_000)); // 10-min window number
+    const r = await env.DB.prepare(
+      `INSERT INTO rate_limit (k, window, n) VALUES (?, ?, 1)
+       ON CONFLICT(k, window) DO UPDATE SET n = n + 1 RETURNING n`,
+    ).bind(`admin:${email}`, window).first<{ n: number }>();
+    if ((r?.n ?? 1) > 20) {
+      return new Response("too many attempts — try again in a few minutes", { status: 429 });
+    }
+  }
+
   // GET: page
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
     const tokens = (await listTokens(env)).filter((t) => t.email === email);

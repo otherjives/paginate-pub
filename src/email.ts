@@ -25,7 +25,7 @@ async function verifiedDestinations(env: EmailEnv): Promise<Set<string>> {
 }
 
 import { z } from "zod";
-export function registerEmailTools(server: any, env: EmailEnv) {
+export function registerEmailTools(server: any, env: EmailEnv, actor: string = "unknown") {
 
   server.registerTool(
     "send_email",
@@ -66,10 +66,10 @@ export function registerEmailTools(server: any, env: EmailEnv) {
           text: body_text ?? "",
           html: body_html,
         });
-        await logOp(env.DB, "send_email", { to: dest, subject }, true);
+        await logOp(env.DB, "send_email", { to: dest, subject }, true, actor);
         return jsonText({ sent: true, to: dest, from: sender });
       } catch (e) {
-        await logOp(env.DB, "send_email", { error: String(e) }, false);
+        await logOp(env.DB, "send_email", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -89,7 +89,7 @@ export function registerEmailTools(server: any, env: EmailEnv) {
       try {
         const cf = new CfClient(env);
         const r = await cf.createEmailAddress(email.trim().toLowerCase());
-        await logOp(env.DB, "add_email_address", { email }, true);
+        await logOp(env.DB, "add_email_address", { email }, true, actor);
         return jsonText({
           added: true,
           email: r.email,
@@ -97,7 +97,7 @@ export function registerEmailTools(server: any, env: EmailEnv) {
           note: "A verification email was sent. The address must be verified before sends to it work.",
         });
       } catch (e) {
-        await logOp(env.DB, "add_email_address", { error: String(e) }, false);
+        await logOp(env.DB, "add_email_address", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -145,10 +145,10 @@ export function registerEmailTools(server: any, env: EmailEnv) {
           actions: [{ type: "forward", value: [forward_to.trim().toLowerCase()] }],
           enabled: true,
         });
-        await logOp(env.DB, "add_email_route", { match, forward_to }, true);
+        await logOp(env.DB, "add_email_route", { match, forward_to }, true, actor);
         return jsonText({ routed: true, match, forward_to, id: r.id });
       } catch (e) {
-        await logOp(env.DB, "add_email_route", { error: String(e) }, false);
+        await logOp(env.DB, "add_email_route", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },

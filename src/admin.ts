@@ -14,7 +14,7 @@ export interface AdminEnv {
 }
 
 import { z } from "zod";
-export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "user" = "admin") {
+export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "user" = "admin", actor: string = "unknown") {
   const ownerOnly = () =>
     errText("This tool requires the owner token. Tokens issued from the admin site are user-scoped by design.");
 
@@ -59,10 +59,10 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
       if (role !== "admin") return ownerOnly();
       try {
         const r = await cf.createDnsRecord({ name, type, content, proxied: proxied ?? true, ttl: 1 });
-        await logOp(env.DB, "set_dns", { name, type, content }, true);
+        await logOp(env.DB, "set_dns", { name, type, content }, true, actor);
         return jsonText({ created: true, id: r.id, name: r.name });
       } catch (e) {
-        await logOp(env.DB, "set_dns", { error: String(e) }, false);
+        await logOp(env.DB, "set_dns", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -98,10 +98,10 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
       if (role !== "admin") return ownerOnly();
       try {
         await cf.putWorkerSecret(env.WORKER_NAME, name, value);
-        await logOp(env.DB, "set_worker_secret", { name }, true);
+        await logOp(env.DB, "set_worker_secret", { name }, true, actor);
         return jsonText({ set: true, name });
       } catch (e) {
-        await logOp(env.DB, "set_worker_secret", { error: String(e) }, false);
+        await logOp(env.DB, "set_worker_secret", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -123,7 +123,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
         crypto.getRandomValues(bytes);
         const newToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
         await cf.putWorkerSecret(env.WORKER_NAME, "MCP_TOKEN", newToken);
-        await logOp(env.DB, "rotate_mcp_token", { rotated: true }, true);
+        await logOp(env.DB, "rotate_mcp_token", { rotated: true }, true, actor);
         return jsonText({
           rotated: true,
           new_token: newToken,
@@ -133,7 +133,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
             '"',
         });
       } catch (e) {
-        await logOp(env.DB, "rotate_mcp_token", { error: String(e) }, false);
+        await logOp(env.DB, "rotate_mcp_token", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -183,7 +183,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
         await env.DB.prepare(
           "INSERT INTO dbs (name, owner_slug, visibility, cf_d1_id, created_at) VALUES (?, ?, ?, ?, ?)",
         ).bind(clean, owner_slug ?? null, visibility, d.uuid, now).run();
-        await logOp(env.DB, "create_db", { name: clean, visibility }, true);
+        await logOp(env.DB, "create_db", { name: clean, visibility }, true, actor);
         return jsonText({
           created: true,
           name: clean,
@@ -192,7 +192,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
           note: "Free tier: 5 GB, 5M reads/day, 100k writes/day.",
         });
       } catch (e) {
-        await logOp(env.DB, "create_db", { error: String(e) }, false);
+        await logOp(env.DB, "create_db", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },

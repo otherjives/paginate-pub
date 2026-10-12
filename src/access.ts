@@ -273,7 +273,7 @@ export async function listUsers(env: AccessEnv) {
 
 // Register the access tools on an MCP server. Called from mcp.ts.
 import { z } from "zod";
-export function registerAccessTools(server: any, env: AccessEnv) {
+export function registerAccessTools(server: any, env: AccessEnv, actor: string = "unknown") {
 
   server.registerTool(
     "create_group",
@@ -290,10 +290,10 @@ export function registerAccessTools(server: any, env: AccessEnv) {
     async ({ name, emails }: { name: string; emails: string[] }) => {
       try {
         const g = await ensureGroup(env, name.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), emails);
-        await logOp(env.DB, "create_group", { name: g.name, emails }, true);
+        await logOp(env.DB, "create_group", { name: g.name, emails }, true, actor);
         return jsonText(g);
       } catch (e) {
-        await logOp(env.DB, "create_group", { error: String(e) }, false);
+        await logOp(env.DB, "create_group", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -316,10 +316,10 @@ export function registerAccessTools(server: any, env: AccessEnv) {
     async ({ slug, group, emails }: { slug: string; group: string; emails?: string[] }) => {
       try {
         const r = await grantAccess(env, slug, group, emails ?? []);
-        await logOp(env.DB, "grant_access", { slug, group, emails: emails ?? [] }, true);
+        await logOp(env.DB, "grant_access", { slug, group, emails: emails ?? [] }, true, actor);
         return jsonText({ granted: true, slug, ...r });
       } catch (e) {
-        await logOp(env.DB, "grant_access", { error: String(e) }, false);
+        await logOp(env.DB, "grant_access", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -338,10 +338,10 @@ export function registerAccessTools(server: any, env: AccessEnv) {
     async ({ slug, group }: { slug: string; group: string }) => {
       try {
         const r = await revokeAccess(env, slug, group);
-        await logOp(env.DB, "revoke_access", { slug, group }, true);
+        await logOp(env.DB, "revoke_access", { slug, group }, true, actor);
         return jsonText({ revoked: true, slug, ...r });
       } catch (e) {
-        await logOp(env.DB, "revoke_access", { error: String(e) }, false);
+        await logOp(env.DB, "revoke_access", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },

@@ -51,11 +51,12 @@ export async function logOp(
   op: string,
   detail: unknown,
   ok: boolean,
+  actor?: string,
 ): Promise<void> {
   try {
     await db
-      .prepare("INSERT INTO ops_log (op, detail, ok, at) VALUES (?, ?, ?, ?)")
-      .bind(op, JSON.stringify(detail)?.slice(0, 4000) ?? null, ok ? 1 : 0, new Date().toISOString())
+      .prepare("INSERT INTO ops_log (op, detail, actor, ok, at) VALUES (?, ?, ?, ?, ?)")
+      .bind(op, JSON.stringify(detail)?.slice(0, 4000) ?? null, actor ?? null, ok ? 1 : 0, new Date().toISOString())
       .run();
   } catch {
     /* logging must never break a tool */
@@ -90,7 +91,7 @@ export async function bearerRole(
   request: Request,
   ownerSecret: string,
   db: D1Database,
-): Promise<"admin" | "user" | null> {
+): Promise<{ role: "admin" | "user"; actor: string } | null> {
   // Header auth (canonical): "Authorization: Bearer <token>". URL auth
   // (?tk=<token>) is a fallback for browser clients (e.g. the claude.ai web
   // connector) that cannot set custom headers. URL tokens are pp_ user
@@ -107,18 +108,18 @@ export async function bearerRole(
   if (token.startsWith("pp_") && token.length >= 64) {
     const hash = await sha256Hex(token);
     const row = await db.prepare(
-      "SELECT id, revoked, expires_at FROM mcp_tokens WHERE token_hash = ?",
-    ).bind(hash).first<{ id: number; revoked: number; expires_at: string | null }>();
+      "SELECT id, email, revoked, expires_at FROM mcp_tokens WHERE token_hash = ?",
+    ).bind(hash).first<{ id: number; email: string; revoked: number; expires_at: string | null }>();
     const expired = row?.expires_at ? new Date(row.expires_at).getTime() < Date.now() : false;
     if (row && !row.revoked && !expired) {
       db.prepare("UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?")
         .bind(new Date().toISOString(), row.id)
         .run()
         .catch(() => {});
-      return "user";
+      return { role: "user", actor: row.email };
     }
     return null;
   }
-  if (await bearerOk(request, ownerSecret)) return "admin";
+  if (await bearerOk(request, ownerSecret)) return { role: "admin", actor: "owner" };
   return null;
 }

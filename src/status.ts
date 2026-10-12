@@ -160,7 +160,7 @@ export async function auditLeaks(env: StatusEnv): Promise<LeakFinding[]> {
   const apps = await cf.listAccessApps().catch(() => [] as any[]);
   const privateHost = new URL(env.PRIVATE_BASE).host;
   for (const p of privatePages) {
-    const hasApp = (apps as any[]).some((a) => a.domain === privateHost && (a.name ?? "").includes(`[paginate-pub:${p.slug}]`));
+    const hasApp = (apps as any[]).some((a) => a.domain === `${privateHost}/s/${p.slug}` || (a.name ?? "").includes(`[${p.slug}]`));
     if (!hasApp && !p.grants) {
       findings.push({
         id: `noaccess:${p.slug}:${p.hash}`,
@@ -172,22 +172,31 @@ export async function auditLeaks(env: StatusEnv): Promise<LeakFinding[]> {
     }
   }
 
-  // 3. anyone-allowed policy on the private host apps
+  // 3. anyone-allowed / bypass policies on private-host apps. Matches ALL
+  // platform-managed apps on the private host (blanket + per-slug), and
+  // recognizes every "anyone" shape: wildcard email, anyone/everyone flags,
+  // and ip-range includes (0.0.0.0/0 or ::/0 = all IPv4/IPv6). The share-link
+  // bypass app on privateHost/x is EXPECTED and allowlisted by domain.
+  const shareBypassDomain = `${privateHost}/x`;
   for (const app of apps as any[]) {
-    if (app.domain !== privateHost) continue;
-    if (!(app.name ?? "").includes("[paginate-pub:")) continue;
+    if (!String(app.domain ?? "").startsWith(privateHost)) continue;
+    if (app.domain === shareBypassDomain) continue; // expected bypass (Worker validates tokens)
     const policies = await cf.listAccessPolicies(app.id).catch(() => [] as any[]);
-    const anyone = (policies as any[]).find((p) =>
-      (p.include ?? []).some((i: any) => i.email?.email === "*" || i.anyone === true || i.everyone === true),
-    );
-    if (anyone) {
-      findings.push({
-        id: `anyone:${app.id}`,
-        kind: "anyone_on_private",
-        severity: "high",
-        detail: { app: app.name, policy: anyone.name },
-        auto_fixable: true,
-      });
+    for (const p of policies as any[]) {
+      const includes = (p.include ?? []) as any[];
+      const isAnyone = includes.some((i: any) =>
+        i.email?.email === "*" || i.anyone === true || i.everyone === true ||
+        i.ip?.ip === "0.0.0.0/0" || i.ip?.ip === "::/0");
+      const isBypass = p.decision === "bypass";
+      if (isAnyone || isBypass) {
+        findings.push({
+          id: `anyone:${app.id}:${p.id ?? p.uid ?? "policy"}`,
+          kind: "anyone_on_private",
+          severity: "high",
+          detail: { app: app.name, policy: p.name, decision: p.decision, includes },
+          auto_fixable: true,
+        });
+      }
     }
   }
 
@@ -228,8 +237,10 @@ export async function fixLeak(env: StatusEnv, findingId: string) {
       const cf = new CfClient(env);
       const policies = await cf.listAccessPolicies(appId);
       for (const p of policies as any[]) {
-        const hasAnyone = (p.include ?? []).some((i: any) => i.email?.email === "*" || i.anyone === true || i.everyone === true);
-        if (hasAnyone) await cf.deleteAccessPolicy(appId, p.id);
+        const hasAnyone = (p.include ?? []).some((i: any) =>
+          i.email?.email === "*" || i.anyone === true || i.everyone === true ||
+          i.ip?.ip === "0.0.0.0/0" || i.ip?.ip === "::/0");
+        if (hasAnyone || p.decision === "bypass") await cf.deleteAccessPolicy(appId, p.id);
       }
       return { fixed: true, removed_anyone_policies_from: appId };
     }
@@ -252,7 +263,7 @@ export async function fixLeak(env: StatusEnv, findingId: string) {
 
 // ---- tools ----
 import { z } from "zod";
-export function registerStatusTools(server: any, env: StatusEnv) {
+export function registerStatusTools(server: any, env: StatusEnv, actor: string = "unknown") {
 
   server.registerTool(
     "get_status",
@@ -304,10 +315,10 @@ export function registerStatusTools(server: any, env: StatusEnv) {
     async ({ finding_id }: any) => {
       try {
         const r = await fixLeak(env, finding_id);
-        await logOp(env.DB, "fix_leak", { finding_id, ...r }, true);
+        await logOp(env.DB, "fix_leak", { finding_id, ...r }, true, actor);
         return jsonText({ ...r, finding_id });
       } catch (e) {
-        await logOp(env.DB, "fix_leak", { finding_id, error: String(e) }, false);
+        await logOp(env.DB, "fix_leak", { finding_id, error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -319,7 +330,7 @@ export async function watchCosts(env: StatusEnv) {
   const status = await getStatus(env);
   const alerts = status.alerts;
   if (alerts.length) {
-    await logOp(env.DB, "watch_costs:alert", { alerts }, true);
+    await logOp(env.DB, "watch_costs:alert", { alerts }, true, "cron");
     // notify the owner via email if a verified destination exists (free)
     try {
       const cf = new CfClient(env);

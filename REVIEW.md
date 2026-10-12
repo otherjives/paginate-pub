@@ -93,14 +93,14 @@ in the architecture fights you.
 
 | # | Risk | Severity | Mitigation |
 |---|---|---|---|
-| W1 | **Per-user tokens never expire.** Revocable but live forever until revoked. | Medium | Add `expires_at` to `mcp_tokens` (e.g. 90d) + check in `bearerRole`. |
-| W2 | **Access JWT verification does not check `iss`** (team domain), only `aud`. | Low | Add `payload.iss === team domain` check in `verifyAccessJwt`. |
+| W1 | ~~**Per-user tokens never expire.**~~ FIXED 2026-10-11: 90-day expiry, enforced in bearerRole. | ~~Medium~~ | Add `expires_at` to `mcp_tokens` (e.g. 90d) + check in `bearerRole`. |
+| W2 | ~~**Access JWT verification does not check `iss`**~~ FIXED 2026-10-11: iss verified. | ~~Low~~ | Add `payload.iss === team domain` check in `verifyAccessJwt`. |
 | W3 | **`grant_access` creates per-slug Access apps on the SAME host** (`private.<domain>`) — an app per slug on one hostname. Cloudflare allows one app per domain per type; the code adopts an existing app on conflict, so multiple slugs SHARE one app. This means: granting slug A to group X also exposes slug B to group X *if they share the host*. | **High** | Use path-scoped apps (`domain: private.<domain>/s/<slug>`) — Cloudflare Access supports path-scoped self-hosted apps. This is the most important fix in this review. |
-| W4 | **No rate limit on the admin site** (only MCP has one). | Low | The site is Access-gated to a handful of people; still, a trivial per-IP bucket would be consistent. |
-| W5 | **MCP endpoint has no audit of per-token tool calls** (`ops_log` records events but not which token made them). | Low | Thread `role`/token id into `logOp` detail. |
+| W4 | ~~**No rate limit on the admin site** (only MCP has one).~~ FIXED 2026-10-11: FIXED 2026-10-11: D1-counter rate limit, 20 actions/10min per identity | ~~Low~~ | The site is Access-gated to a handful of people; still, a trivial per-IP bucket would be consistent. |
+| W5 | ~~**MCP endpoint has no audit of per-token tool calls** (`ops_log` records events but not which token made them).~~ FIXED 2026-10-11: FIXED 2026-10-11: ops_log.actor column + full attribution on all mutating tools | ~~Low~~ | Thread `role`/token id into `logOp` detail. |
 | W6 | **KV is the only content store** — eventual consistency already bit us twice (fixed with retries). | Accepted | Documented; retries in place; R2 remains the better store if it's ever enabled on the account. |
 | W7 | `/s/` misses return 404 (was 200 landing) — fixed 2026-10-11. | Fixed | Done. |
-| W8 | **`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes). | Low | Compare against real policy shapes from the API once one exists in the account. |
+| W8 | ~~**`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes).~~ FIXED 2026-10-11: FIXED 2026-10-11: detects ip 0.0.0.0/0 + bypass decisions, allowlists the expected /x bypass, name-matcher repaired | ~~Low~~ | Compare against real policy shapes from the API once one exists in the account. |
 
 **Overall security verdict:** solid for the threat model (friend + a few
 collaborators + the public internet). W3 is the one real issue to fix before

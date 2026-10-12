@@ -54,14 +54,14 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       }
-      const role = await bearerRole(request, env.MCP_TOKEN, env.DB);
-      if (!role) {
+      const auth = await bearerRole(request, env.MCP_TOKEN, env.DB);
+      if (!auth) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
           headers: { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" },
         });
       }
-      const handler = createMcpHandler(() => createServer(env, role), {
+      const handler = createMcpHandler(() => createServer(env, auth.role, auth.actor), {
         route: MCP_ROUTE,
         corsOptions: false,
         allowedHostnames: [`mcp.${domain}`],

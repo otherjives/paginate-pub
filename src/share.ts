@@ -144,7 +144,7 @@ export async function handleShareRequest(
 import { z } from "zod";
 import { logOp, jsonText, errText } from "./util";
 
-export function registerShareTools(server: any, env: ShareEnv) {
+export function registerShareTools(server: any, env: ShareEnv, actor: string = "unknown") {
   server.registerTool(
     "create_share_link",
     {

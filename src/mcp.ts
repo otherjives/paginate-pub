@@ -71,7 +71,7 @@ const TEMPLATE_API_NOTES = `# API notes for this page
 - The page JS can use window.pp.api(...) (injected by the 'app'/'game'/'board' presets).
 `;
 
-export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
+export function createServer(env: ToolEnv, role: "admin" | "user" = "admin", actor: string = "unknown") {
   const server = new McpServer({ name: "paginate-pub", version: "1.0.0" });
   const cf = new CfClient(env);
 
@@ -161,10 +161,10 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
           "INSERT INTO pages (slug, title, visibility, hash, url, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         ).bind(s, title ?? null, visibility, hash, url, size, now).run();
 
-        await logOp(env.DB, "publish_page", { slug: s, hash, visibility, url, size, files: Object.keys(extra).length, template: template ?? null }, true);
+        await logOp(env.DB, "publish_page", { slug: s, hash, visibility, url, size, files: Object.keys(extra).length, template: template ?? null }, true, actor);
         return jsonText({ url, latest_url: latest, slug: s, hash, visibility, size_bytes: size, files: Object.keys(extra).length, template: template ?? null });
       } catch (e) {
-        await logOp(env.DB, "publish_page", { error: String(e) }, false);
+        await logOp(env.DB, "publish_page", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -248,10 +248,10 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
           await env.DB.prepare("DELETE FROM pages WHERE slug = ?").bind(slug).run();
           await env.DB.prepare("DELETE FROM assets_groups WHERE slug = ?").bind(slug).run();
         }
-        await logOp(env.DB, "delete_page", { slug, hash: hash ?? "*", removed: rows.length }, true);
+        await logOp(env.DB, "delete_page", { slug, hash: hash ?? "*", removed: rows.length }, true, actor);
         return jsonText({ deleted: rows.length, slug, hash: hash ?? "*" });
       } catch (e) {
-        await logOp(env.DB, "delete_page", { error: String(e) }, false);
+        await logOp(env.DB, "delete_page", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
@@ -338,35 +338,35 @@ export function createServer(env: ToolEnv, role: "admin" | "user" = "admin") {
             groupGranted = group;
           } catch (e) {
             // non-fatal: the page is private; the grant can be retried with grant_access
-            await logOp(env.DB, "set_visibility:grant_failed", { slug, group, error: String(e) }, false);
+            await logOp(env.DB, "set_visibility:grant_failed", { slug, group, error: String(e) }, false, actor);
           }
         }
 
-        await logOp(env.DB, "set_visibility", { slug, from: row.visibility, to, versions_moved: moved.length, group: group ?? null }, true);
+        await logOp(env.DB, "set_visibility", { slug, from: row.visibility, to, versions_moved: moved.length, group: group ?? null }, true, actor);
         return jsonText({ moved: true, slug, from: row.visibility, to, versions_moved: moved.length, latest: { hash: row.hash, url: newUrl }, urls: moved, group_granted: groupGranted });
       } catch (e) {
-        await logOp(env.DB, "set_visibility", { error: String(e) }, false);
+        await logOp(env.DB, "set_visibility", { error: String(e) }, false, actor);
         return errText(String(e));
       }
     },
   );
 
   // Phase C: access control tools (groups, grant/revoke, users)
-  registerAccessTools(server, env);
+  registerAccessTools(server, env, actor);
 
   // Phase D: email tools (verified-destination-only sending by default)
-  registerEmailTools(server, env);
+  registerEmailTools(server, env, actor);
 
   // Phase E: subdomain provisioning + launch_group
   (registerSubdomainTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" });
 
   // Phase F: status / audit / leak tools
-  registerStatusTools(server, env);
+  registerStatusTools(server, env, actor);
 
   // Phase F2: admin tools (DNS, secrets, token rotation, ops log, create_db).
   // Owner-only tools refuse per-user tokens (role gating).
-  (registerAdminTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" }, role);
-  registerShareTools(server, env);
+  (registerAdminTools as any)(server, { ...env, WORKER_NAME: "paginate-pub" }, role, actor);
+  registerShareTools(server, env, actor);
 
   return server;
 }
