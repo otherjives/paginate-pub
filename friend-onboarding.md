@@ -32,7 +32,8 @@ publish_page(html, title?, slug?, visibility="public"|"private",
   - `"slides"` — injects a 5s auto-refresh shim: viewers on the latest URL
     see the presenter's next publish within 5 seconds
   - `"game"` / `"board"` / `"app"` — injects `window.pp.api()` (same-origin
-    JSON client) and ships an `api-notes.md` with the API contract
+    JSON client); game/board presets also ship an `api-notes.md` with the
+    API contract
 
 ## Data-backed pages
 

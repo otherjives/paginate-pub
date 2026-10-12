@@ -9,8 +9,8 @@ step; everything else is self-serve.
 
 Everything is plain code on plain infrastructure:
 
-- The Worker is ~2,000 lines of TypeScript over four Cloudflare primitives
-  (Workers, KV, D1, Access) — no proprietary runtime, no build pipeline
+- The Worker is ~2,900 lines of TypeScript over six Cloudflare primitives
+  (Workers, KV, D1, Access, Email Routing, Analytics Engine) — no proprietary runtime, no build pipeline
   beyond `wrangler deploy`, no state that can't be exported
 - All content is raw HTML in KV under `<visibility>/<slug>/<hash>` keys; all
   control-plane state is SQLite in D1 — both export with one command

@@ -70,6 +70,32 @@ Two dashboard actions that remain owner-only by platform design:
 - Nothing else currently; the blanket private-host Access app was created
   via API as `paginate-pub private host`
 
+## 8. CI typecheck action — DEFERRED (REVIEW §5 #1)
+
+A GitHub Actions workflow running `tsc --noEmit` (or wrangler's build) on
+PRs. Cheap and keeps collaborators honest; skipped because this repo has no
+CI at all yet. Trigger: first outside contributor's first PR.
+
+## 9. Unit tests for util/static path logic — DEFERRED (REVIEW §5 #3)
+
+The 26-check live acceptance suite is the real gate; unit tests for
+slugify/key-building/path regexes would be nice polish. Trigger: a refactor
+touching util.ts or static.ts.
+
+## 10. Form-submission endpoint (with Turnstile) — DEFERRED (REVIEW §5 #2)
+
+`POST /api/<slug>/submit` for contact forms on published pages, gated by
+Turnstile. Would pair with item 4 (Turnstile for APIs). Trigger: a friend
+publishes a page that needs a form.
+
+## 11. Legacy tokens with NULL expires_at — MIGRATION NOTE
+
+Tokens issued before the 90-day-expiry fix have NULL `expires_at` and are
+treated as non-expiring by bearerRole. Only new tokens get 90 days. If any
+legacy token matters, revoke it from the admin site and re-issue. Trigger:
+any suspicion of an old token in the wild — check
+`SELECT id, email FROM mcp_tokens WHERE expires_at IS NULL AND revoked = 0`.
+
 ---
 
 *This file is the tracker. When something here gets built or explicitly

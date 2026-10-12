@@ -94,6 +94,7 @@ claude mcp add --transport http paginate-pub https://mcp.paginate.dev/mcp \
 - `TESTING.md` — trial instructions for a test friend (install → one-shots → report)
 - `OWNERSHIP.md` — the full-possession path: fork → account transfer → MCP rewrite
 - `REVIEW.md` — capability/security/cleanliness audit with fix history
+- `FUTURE.md` — the decision tracker: deferred designs, why, and triggers
 
 ## Testing
 
@@ -113,10 +114,11 @@ scripts live in Temp during development and are not part of the repo.
   DNS record + domain mapping (provisioned by the tool, ~1 min)
 - Published pages run with a strict CSP (no external origins); side files
   publish under the version hash so relative paths "just work"
-- The acceptance suite is self-cleaning: it deletes its own `acceptance-*`
-  fixtures after every run. The path-scoped Access app on
-  `private.paginate.dev/s/acceptance-secret` persists and is adopted
-  idempotently on the next run
+- The acceptance suite deletes its own `acceptance-*` pages after every run.
+  Persistent fixtures (reused across runs, adopted idempotently): the
+  path-scoped Access app on `private.paginate.dev/s/acceptance-secret`, the
+  `acceptance-db` D1 database, and the `acceptance-team` group — do not
+  delete these
 
 ## Security notes
 

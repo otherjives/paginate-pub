@@ -118,6 +118,7 @@ export function registerAdminTools(server: any, env: AdminEnv, role: "admin" | "
       inputSchema: {},
     },
     async () => {
+      if (role !== "admin") return ownerOnly();
       try {
         const bytes = new Uint8Array(32);
         crypto.getRandomValues(bytes);

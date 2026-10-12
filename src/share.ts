@@ -156,7 +156,7 @@ export function registerShareTools(server: any, env: ShareEnv, actor: string = "
       inputSchema: {
         slug: z.string().describe("The private page's slug."),
         hours: z.number().int().positive().max(24 * 365).optional().describe(
-          "Hours until the link dies. Default 48. Omit for a permanent link (not recommended)."),
+          "Hours until the link dies. Default 48."),
         max_uses: z.number().int().positive().optional().describe(
           "Total opens allowed. 1 = one-time link. Default unlimited."),
         note: z.string().max(120).optional().describe("Why this link exists, e.g. 'for Dave'."),

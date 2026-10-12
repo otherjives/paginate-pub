@@ -95,12 +95,12 @@ in the architecture fights you.
 |---|---|---|---|
 | W1 | ~~**Per-user tokens never expire.**~~ FIXED 2026-10-11: 90-day expiry, enforced in bearerRole. | ~~Medium~~ | Add `expires_at` to `mcp_tokens` (e.g. 90d) + check in `bearerRole`. |
 | W2 | ~~**Access JWT verification does not check `iss`**~~ FIXED 2026-10-11: iss verified. | ~~Low~~ | Add `payload.iss === team domain` check in `verifyAccessJwt`. |
-| W3 | **`grant_access` creates per-slug Access apps on the SAME host** (`private.<domain>`) — an app per slug on one hostname. Cloudflare allows one app per domain per type; the code adopts an existing app on conflict, so multiple slugs SHARE one app. This means: granting slug A to group X also exposes slug B to group X *if they share the host*. | **High** | Use path-scoped apps (`domain: private.<domain>/s/<slug>`) — Cloudflare Access supports path-scoped self-hosted apps. This is the most important fix in this review. |
-| W4 | ~~**No rate limit on the admin site** (only MCP has one).~~ FIXED 2026-10-11: FIXED 2026-10-11: D1-counter rate limit, 20 actions/10min per identity | ~~Low~~ | The site is Access-gated to a handful of people; still, a trivial per-IP bucket would be consistent. |
-| W5 | ~~**MCP endpoint has no audit of per-token tool calls** (`ops_log` records events but not which token made them).~~ FIXED 2026-10-11: FIXED 2026-10-11: ops_log.actor column + full attribution on all mutating tools | ~~Low~~ | Thread `role`/token id into `logOp` detail. |
+| W3 | ~~**`grant_access` creates per-slug Access apps on the SAME host** (`private.<domain>`) — an app per slug on one hostname. Cloudflare allows one app per domain per type; the code adopts an existing app on conflict, so multiple slugs SHARE one app. This means: granting slug A to group X also exposes slug B to group X *if they share the host*.~~ FIXED (path-scoped apps deployed; leak audit checks them) | ~~**High**~~ | Use path-scoped apps (`domain: private.<domain>/s/<slug>`) — Cloudflare Access supports path-scoped self-hosted apps. This is the most important fix in this review. |
+| W4 | ~~**No rate limit on the admin site** (only MCP has one).~~ FIXED 2026-10-11: D1-counter rate limit, 20 actions/10min per identity | ~~Low~~ | The site is Access-gated to a handful of people; still, a trivial per-IP bucket would be consistent. |
+| W5 | ~~**MCP endpoint has no audit of per-token tool calls** (`ops_log` records events but not which token made them).~~ FIXED 2026-10-11: ops_log.actor column + full attribution on all mutating tools | ~~Low~~ | Thread `role`/token id into `logOp` detail. |
 | W6 | **KV is the only content store** — eventual consistency already bit us twice (fixed with retries). | Accepted | Documented; retries in place; R2 remains the better store if it's ever enabled on the account. |
 | W7 | `/s/` misses return 404 (was 200 landing) — fixed 2026-10-11. | Fixed | Done. |
-| W8 | ~~**`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes).~~ FIXED 2026-10-11: FIXED 2026-10-11: detects ip 0.0.0.0/0 + bypass decisions, allowlists the expected /x bypass, name-matcher repaired | ~~Low~~ | Compare against real policy shapes from the API once one exists in the account. |
+| W8 | ~~**`audit_leaks` anyone-check is naive** (looks for `email: "*"` / `anyone: true` / `everyone: true` — not all CF "everyone" shapes).~~ FIXED 2026-10-11: detects ip 0.0.0.0/0 + bypass decisions, allowlists the expected /x bypass, name-matcher repaired | ~~Low~~ | Compare against real policy shapes from the API once one exists in the account. |
 
 **Overall security verdict:** solid for the threat model (friend + a few
 collaborators + the public internet). W3 is the one real issue to fix before
@@ -145,11 +145,11 @@ are current. This review is `REVIEW.md`.
 
 ## 5. Priority fixes (ranked)
 
-1. **W3 — path-scoped Access apps** (private-sharing correctness). *
-2. **W1 — token expiry** (security hygiene). *
-3. **W2 — JWT `iss` check** (one line). *
-4. CI: typecheck action (cheap, keeps collaborators honest).
-5. Public DB API surface (`/api/db/:slug`) if data-backed demos are wanted. *
-6. Public form-submission endpoint (with Turnstile) if forms are wanted.
+Previously ranked W1/W2/W3 (token expiry, JWT iss, path-scoped apps) are
+all fixed — see the W-table. Current open items, tracked with triggers in
+FUTURE.md:
 
-\* small, well-scoped; can be done in one sitting.
+1. CI: typecheck action (cheap, keeps collaborators honest).
+2. Public form-submission endpoint (with Turnstile) if forms are wanted.
+3. Unit tests for util/static path logic (nice-to-have; the 26-check
+   acceptance suite is the real gate).
