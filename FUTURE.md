@@ -96,6 +96,60 @@ legacy token matters, revoke it from the admin site and re-issue. Trigger:
 any suspicion of an old token in the wild — check
 `SELECT id, email FROM mcp_tokens WHERE expires_at IS NULL AND revoked = 0`.
 
+## 12. Side files unreachable from vanity-host pages — LIVE BUG (found 2026-10-20)
+
+Vanity hosts only serve `/` (302 to the latest hash path); every other
+path falls through to the landing JSON. So multi-file publishes
+(`files: {...}`) work on pub/private but silently break on vanity hosts:
+a page's relative fetch of a side file resolves to `<vanity>/<path>` and
+gets landing JSON instead of the asset (hit live: the wtf-grocery-energy
+page "hung loading" fetching its audio side file from
+wtfhappened.paginate.dev). Fix when picked up: serve side files on vanity
+hosts under the host's resolved hash. Until then, pages that must work on
+vanity hosts should inline everything (the audio page's final answer was
+base64-in-HTML, ~705 KB — served fine). Cost angle: inline-heavy pages
+re-store the full payload under a NEW hash every publish, versions never
+GC, KV free tier is 1 GB — editing media-bearing pages repeatedly eats KV
+at a rate the friend won't see coming. Trigger: a friend actually needs
+multi-file on a vanity host, or KV usage starts climbing.
+
+## 13. Binary files support — DEFERRED (depends on #12)
+
+`files` takes string content only; a binary file (e.g. .mp3) passed as
+base64 stores and serves as base64 TEXT with content-type
+application/octet-stream (verified live 2026-10-20 — not playable as a
+URL). Design if built: accept `{path, base64, binary:true}`, decode in the
+Worker, store raw bytes, serve with the dot-keyed MIME map (.mp3 ->
+audio/mpeg). Only worth building together with #12 (side-file routing) —
+until then, inline base64 + client-side decode is the proven pattern
+(needs CSP `media-src 'self' blob:`, added 2026-10-20, commit 8019d9c).
+
+## 14. publish_page description should state the page contract — CHEAP, HIGH VALUE
+
+Tool descriptions are the friend's agent's only map of what works. The
+live CSP allows: inline styles/scripts only, no external scripts, no
+CDNs, no iframes, no frame-ancestors, media from 'self'/blob: (data: for
+images/fonts). An agent that tries Chart.js from a CDN or a YouTube
+embed gets a silently broken page and the publish result says success.
+Add to the publish_page description: "Serves fully self-contained pages:
+inline all CSS/JS; no external scripts, styles, iframes, or media URLs.
+~700 KB publishes fine (KV value cap 25 MB); API records max 16 KB."
+Also worth a line about size guidance. Zero behavior change, one deploy.
+Trigger: next deploy batch, or the first friend report of a broken page.
+
+## 15. check_page tool — IDEA (nice-to-have)
+
+A read-only tool that fetches the SERVED bytes at the URL a browser
+actually resolves (following vanity-root 302s), asserting anchor strings
+/ CSS quote parity / required ids. Would have caught two live bugs
+automatically (2026-10-20: a quote-swallowed CSS url() broke all styling
+while the serve-check grepped presence markers and passed; the
+side-file-on-vanity hang was verified at the wrong URL). Until built, the
+manual ladder is: fetch served bytes at the browser-resolved URL, check
+CSS quote parity + that the rule AFTER the touched one still parses,
+never only grep the local file. Trigger: a friend publishes pages they
+care about enough to want publish-time self-checks.
+
 ---
 
 *This file is the tracker. When something here gets built or explicitly
