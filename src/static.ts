@@ -47,7 +47,7 @@ export function contentTypeFor(path: string): string {
 // Minimum CSP for published demo pages: no external fetches by default,
 // inline styles allowed (demos love them), scripts only from self.
 export const ASSET_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 export interface ServeEnv {
   CACHE: KVNamespace;
